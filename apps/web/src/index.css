@@ -127,3 +127,41 @@
 .maplibregl-ctrl-attrib a {
   color: var(--primary) !important;
 }
+
+/*
+ * Range slider "candy" — para a timeline do player.
+ */
+.dm-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: linear-gradient(
+    to right,
+    var(--primary) 0%,
+    var(--primary) calc(var(--dm-range-fill, 0) * 100%),
+    var(--secondary) calc(var(--dm-range-fill, 0) * 100%),
+    var(--secondary) 100%
+  );
+  border-radius: 999px;
+  outline: none;
+}
+.dm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: white;
+  border: 3px solid var(--primary);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+.dm-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: white;
+  border: 3px solid var(--primary);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}

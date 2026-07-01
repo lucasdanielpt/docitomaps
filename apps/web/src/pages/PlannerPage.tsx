@@ -1,19 +1,53 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Film, Sparkles, TriangleAlert } from 'lucide-react';
 import { LogoWordmark } from '@/components/brand/Logo';
 import { Chip } from '@/components/ui/chip';
+import { Button } from '@/components/ui/button';
 import { PlannerPanel } from '@/features/planner/PlannerPanel';
 import { MapView } from '@/features/map/MapView';
+import { PlayerControls } from '@/features/player/PlayerControls';
 import { fetchHealth } from '@/services/api';
+import { useRouteStore } from '@/stores/routeStore';
+import { usePlayerStore } from '@/stores/playerStore';
 
 export function PlannerPage() {
   const [orsWarning, setOrsWarning] = useState(false);
+  const route = useRouteStore((s) => s.route);
+  const cinema = usePlayerStore((s) => s.cinema);
+  const setCinema = usePlayerStore((s) => s.setCinema);
 
   useEffect(() => {
     fetchHealth()
       .then((h) => setOrsWarning(!h.orsKeyConfigured))
       .catch(() => setOrsWarning(true));
   }, []);
+
+  if (cinema) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div className="absolute inset-0">
+          <MapView />
+        </div>
+        <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 md:p-6">
+          <div className="pointer-events-auto flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCinema(false)}
+              className="gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar ao planner
+            </Button>
+            <Chip>
+              <Film className="h-3 w-3 text-primary" /> Modo cinema
+            </Chip>
+          </div>
+          <PlayerControls />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -70,6 +104,19 @@ export function PlannerPage() {
           </div>
           <div className="relative min-h-[560px] overflow-hidden rounded-3xl border border-border/60 bg-card/80 shadow-candy backdrop-blur">
             <MapView />
+            {route && (
+              <div className="pointer-events-none absolute inset-x-4 bottom-4 flex justify-center">
+                <Button
+                  type="button"
+                  variant="candy"
+                  size="lg"
+                  onClick={() => setCinema(true)}
+                  className="pointer-events-auto"
+                >
+                  <Film className="h-5 w-5" /> Assistir viagem em 3D
+                </Button>
+              </div>
+            )}
           </div>
         </section>
 

@@ -2,16 +2,24 @@ import { useEffect, useMemo, useRef } from 'react';
 import maplibregl, { type LngLatBoundsLike } from 'maplibre-gl';
 import type { LineStringGeometry, Waypoint } from '@docitomapas/shared';
 import { useRouteStore } from '@/stores/routeStore';
+import { usePlayerStore, ZOOM_PRESETS } from '@/stores/playerStore';
+import {
+  computeCumulativeDistances,
+  interpolatePosition,
+  type CumulativeDistances,
+} from '@/lib/geometry';
+import { CharacterLayer } from '@/features/character/CharacterLayer';
 import { OPENFREEMAP_STYLE_URL, OSM_RASTER_STYLE } from './mapStyle';
 
 const ROUTE_SOURCE_ID = 'route-source';
 const ROUTE_LAYER_ID = 'route-line';
 const ROUTE_CASING_ID = 'route-casing';
 const MARKERS_SOURCE_ID = 'markers-source';
+const CHARACTER_LAYER_ID = 'docito-character';
 
 interface OrderedWaypoint {
   wp: Waypoint;
-  index: number; // 0 = origem, últimos = destino
+  index: number;
   kind: 'origin' | 'stop' | 'destination';
 }
 
@@ -46,12 +54,25 @@ export function MapView() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const isLoadedRef = useRef(false);
+  const characterLayerRef = useRef<CharacterLayer | null>(null);
+  const cumulativeRef = useRef<CumulativeDistances | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
 
   const origin = useRouteStore((s) => s.origin);
   const destination = useRouteStore((s) => s.destination);
   const stops = useRouteStore((s) => s.stops);
   const route = useRouteStore((s) => s.route);
   const optimizedOrder = useRouteStore((s) => s.optimizedOrder);
+
+  const cinema = usePlayerStore((s) => s.cinema);
+  const playing = usePlayerStore((s) => s.playing);
+  const progress = usePlayerStore((s) => s.progress);
+  const speed = usePlayerStore((s) => s.speed);
+  const zoomPreset = usePlayerStore((s) => s.zoomPreset);
+  const cameraMode = usePlayerStore((s) => s.cameraMode);
+  const setProgress = usePlayerStore((s) => s.setProgress);
+  const pause = usePlayerStore((s) => s.pause);
 
   const orderedWaypoints = useMemo<OrderedWaypoint[]>(() => {
     const out: OrderedWaypoint[] = [];
@@ -64,12 +85,15 @@ export function MapView() {
     return out;
   }, [origin, destination, stops, optimizedOrder]);
 
+  // ------------------------------------------------------------------
+  // Setup do mapa (uma vez)
+  // ------------------------------------------------------------------
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: OPENFREEMAP_STYLE_URL,
-      center: [-46.6333, -23.5505], // São Paulo (default)
+      center: [-46.6333, -23.5505],
       zoom: 4,
       attributionControl: { compact: true },
     });
@@ -79,7 +103,6 @@ export function MapView() {
       'bottom-left',
     );
 
-    // fallback caso OpenFreeMap falhe
     map.on('error', (e) => {
       const err = e.error as Error | undefined;
       if (err && /openfreemap|style/i.test(err.message)) {
@@ -102,21 +125,14 @@ export function MapView() {
         type: 'line',
         source: ROUTE_SOURCE_ID,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#ffffff',
-          'line-width': 9,
-          'line-opacity': 0.9,
-        },
+        paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 },
       });
       map.addLayer({
         id: ROUTE_LAYER_ID,
         type: 'line',
         source: ROUTE_SOURCE_ID,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': 'oklch(0.68 0.22 355)',
-          'line-width': 5,
-        },
+        paint: { 'line-color': 'oklch(0.68 0.22 355)', 'line-width': 5 },
       });
       map.addSource(MARKERS_SOURCE_ID, {
         type: 'geojson',
@@ -126,13 +142,17 @@ export function MapView() {
 
     mapRef.current = map;
     return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
       map.remove();
       mapRef.current = null;
       isLoadedRef.current = false;
+      characterLayerRef.current = null;
     };
   }, []);
 
-  // Sincronizar rota como GeoJSON
+  // ------------------------------------------------------------------
+  // Sincronizar rota como GeoJSON + pré-calcular cumulative
+  // ------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isLoadedRef.current) return;
@@ -144,16 +164,20 @@ export function MapView() {
         properties: {},
         geometry: route.fullGeometry,
       } as GeoJSON.Feature);
-      const bounds = computeBoundsFromGeom(route.fullGeometry);
-      if (bounds) {
-        map.fitBounds(bounds, { padding: 80, duration: 800, maxZoom: 14 });
+      cumulativeRef.current = computeCumulativeDistances(route.fullGeometry);
+      if (!cinema) {
+        const bounds = computeBoundsFromGeom(route.fullGeometry);
+        if (bounds) map.fitBounds(bounds, { padding: 80, duration: 800, maxZoom: 14 });
       }
     } else {
       src.setData({ type: 'FeatureCollection', features: [] });
+      cumulativeRef.current = null;
     }
-  }, [route]);
+  }, [route, cinema]);
 
-  // Renderizar marcadores
+  // ------------------------------------------------------------------
+  // Marcadores
+  // ------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -162,7 +186,6 @@ export function MapView() {
 
     orderedWaypoints.forEach((ow) => {
       const el = document.createElement('div');
-      el.className = 'dm-marker';
       el.style.width = '28px';
       el.style.height = '28px';
       el.style.borderRadius = '50%';
@@ -173,7 +196,7 @@ export function MapView() {
       el.style.justifyContent = 'center';
       el.style.fontWeight = '700';
       el.style.fontSize = '12px';
-      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.35)';
+      el.style.boxShadow = '0 4px 10px rgba(191, 88, 132, 0.35)';
       el.style.border = '2px solid white';
       el.textContent =
         ow.kind === 'origin' ? 'A' : ow.kind === 'destination' ? 'B' : String(ow.index);
@@ -184,8 +207,7 @@ export function MapView() {
       markersRef.current.push(marker);
     });
 
-    // Se não há rota, ainda faz um enquadramento pelos pontos
-    if (!route && orderedWaypoints.length > 0) {
+    if (!route && orderedWaypoints.length > 0 && !cinema) {
       const first = orderedWaypoints[0];
       if (!first) return;
       let minLng = first.wp.location.lng;
@@ -210,7 +232,125 @@ export function MapView() {
         );
       }
     }
-  }, [orderedWaypoints, route]);
+  }, [orderedWaypoints, route, cinema]);
+
+  // ------------------------------------------------------------------
+  // Adicionar/remover camada do personagem conforme cinema
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isLoadedRef.current || !route) return;
+    if (cinema) {
+      if (!characterLayerRef.current) {
+        const layer = new CharacterLayer();
+        characterLayerRef.current = layer;
+        map.addLayer(layer);
+      }
+    } else {
+      if (characterLayerRef.current && map.getLayer(CHARACTER_LAYER_ID)) {
+        map.removeLayer(CHARACTER_LAYER_ID);
+      }
+      characterLayerRef.current = null;
+    }
+  }, [cinema, route]);
+
+  // ------------------------------------------------------------------
+  // Aplicar zoom preset ao entrar em cinema ou trocar preset
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !cinema) return;
+    const preset = ZOOM_PRESETS[zoomPreset];
+    map.easeTo({ zoom: preset.zoom, pitch: preset.pitch, duration: 600 });
+  }, [cinema, zoomPreset]);
+
+  // ------------------------------------------------------------------
+  // RAF loop: avança progresso conforme playing + speed e reposiciona
+  // câmera + personagem
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!cinema || !route) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
+
+    const totalDurSec = route.totalDurationSeconds;
+    const cumulative = cumulativeRef.current ?? computeCumulativeDistances(route.fullGeometry);
+    cumulativeRef.current = cumulative;
+
+    const step = (now: number) => {
+      const last = lastFrameTimeRef.current || now;
+      const dt = (now - last) / 1000;
+      lastFrameTimeRef.current = now;
+
+      let currentProgress = usePlayerStore.getState().progress;
+      if (usePlayerStore.getState().playing) {
+        // 1 unidade de progress = totalDurSec segundos em velocidade 1x
+        currentProgress += (dt / totalDurSec) * speed;
+        if (currentProgress >= 1) {
+          currentProgress = 1;
+          pause();
+        }
+        setProgress(currentProgress);
+      }
+
+      const pos = interpolatePosition(route.fullGeometry, currentProgress, cumulative);
+      if (pos) {
+        const preset = ZOOM_PRESETS[zoomPreset];
+        // Câmera segue o personagem
+        const bearing =
+          cameraMode === 'top-down' ? 0 : cameraMode === 'first-person' ? pos.heading : pos.heading;
+        const pitch =
+          cameraMode === 'top-down'
+            ? 0
+            : cameraMode === 'first-person'
+              ? Math.min(80, preset.pitch + 10)
+              : preset.pitch;
+        map.jumpTo({ center: [pos.lng, pos.lat], bearing, pitch });
+
+        // Update personagem
+        characterLayerRef.current?.update(
+          pos.lng,
+          pos.lat,
+          pos.heading,
+          Math.min(1, speed / 16),
+        );
+      }
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastFrameTimeRef.current = 0;
+    };
+  }, [cinema, route, playing, speed, zoomPreset, cameraMode, setProgress, pause]);
+
+  // Enquadrar toda a rota ao sair do modo cinema
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || cinema || !route) return;
+    map.easeTo({ pitch: 0, bearing: 0, duration: 400 });
+    const bounds = computeBoundsFromGeom(route.fullGeometry);
+    if (bounds) map.fitBounds(bounds, { padding: 80, duration: 800, maxZoom: 14 });
+  }, [cinema, route]);
+
+  // Também dispara um render quando progress é setado externamente (seek)
+  useEffect(() => {
+    if (!cinema || !route) return;
+    const cumulative = cumulativeRef.current;
+    if (!cumulative) return;
+    const pos = interpolatePosition(route.fullGeometry, progress, cumulative);
+    if (pos) {
+      characterLayerRef.current?.update(pos.lng, pos.lat, pos.heading, Math.min(1, speed / 16));
+    }
+  }, [progress, cinema, route, speed]);
 
   return <div ref={containerRef} className="h-full w-full" aria-label="Mapa" role="region" />;
 }

@@ -1,3 +1,4 @@
+import { setDefaultResultOrder } from 'node:dns';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -6,6 +7,11 @@ import { env, hasOrsKey } from './config.js';
 import { geocodeRoutes } from './routes/geocode.js';
 import { routeRoutes } from './routes/route.js';
 import { optimizeRoutes } from './routes/optimize.js';
+
+// Node 18+ tenta IPv6 primeiro por padrão. Em macOS/redes NAT64, isso resulta em
+// timeouts ao chamar api.openrouteservice.org via IPv4-mapped IPv6. Forçamos
+// resolução IPv4-primeiro para evitar o problema em dev.
+setDefaultResultOrder('ipv4first');
 
 async function buildServer() {
   const app = Fastify({
