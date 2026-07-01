@@ -31,7 +31,16 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
  * Se a animação "walk" estiver com nome diferente, a heurística
  * `pickAnimationClip()` procura por 'walk' > 'run' > primeira disponível.
  */
-export const CHARACTER_MODEL_URL = '/models/character.glb';
+/**
+ * URLs candidatas do modelo, testadas em ordem. A primeira que responder 200
+ * será carregada. Aceita tanto o nome padronizado (`character.glb`) quanto o
+ * nome que sai por padrão do Mixamo (`Walking.glb` / `walking.glb`).
+ */
+export const CHARACTER_MODEL_URLS = [
+  '/models/character.glb',
+  '/models/Walking.glb',
+  '/models/walking.glb',
+];
 
 /**
  * Escala aproximada esperada para modelos Mixamo (que exportam em cm).
@@ -91,7 +100,7 @@ export class CharacterLayer implements CustomLayerInterface {
 
     // Tenta trocar por .glb em segundo plano; se falhar (404, erro), fica com
     // o procedural silenciosamente.
-    void this.tryLoadGltf(CHARACTER_MODEL_URL);
+    void this.tryLoadFirstAvailable(CHARACTER_MODEL_URLS);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: map.getCanvas(),
@@ -154,23 +163,42 @@ export class CharacterLayer implements CustomLayerInterface {
   // Carregamento assíncrono do .glb (Mixamo)
   // -------------------------------------------------------------------------
 
-  private async tryLoadGltf(url: string): Promise<void> {
-    try {
-      // Faz um HEAD antes para não poluir o console com erro em dev quando
-      // o arquivo não existe (esperado no MVP).
-      const head = await fetch(url, { method: 'HEAD' });
-      if (!head.ok) return;
-    } catch {
-      return;
-    }
+  private async tryLoadFirstAvailable(urls: string[]): Promise<void> {
+    for (const url of urls) {
+      try {
+        // HEAD antes para evitar poluir o console com 404 em dev.
+        // Cuidado: em dev, o Vite retorna 200 + text/html (index.html) como
+        // fallback SPA para caminhos inexistentes. Precisamos checar o
+        // Content-Type explicitamente para não gerar falsos positivos.
+        const head = await fetch(url, { method: 'HEAD' });
+        if (!head.ok) continue;
+        const contentType = head.headers.get('content-type') ?? '';
+        if (
+          !contentType.includes('gltf') &&
+          !contentType.includes('octet-stream') &&
+          !contentType.includes('binary')
+        ) {
+          // Ex.: text/html => fallback SPA; ignorar.
+          continue;
+        }
+      } catch {
+        continue;
+      }
 
-    const loader = new GLTFLoader();
-    try {
-      const gltf = await loader.loadAsync(url);
-      this.installGltf(gltf);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[DocitoMapas] falha ao carregar character.glb, mantendo boneco procedural:', err);
+      const loader = new GLTFLoader();
+      try {
+        const gltf = await loader.loadAsync(url);
+        this.installGltf(gltf);
+        // eslint-disable-next-line no-console
+        console.info(`[DocitoMapas] modelo 3D carregado: ${url}`);
+        return;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[DocitoMapas] falha ao carregar ${url}, tentando próximo/fallback procedural:`,
+          err,
+        );
+      }
     }
   }
 
