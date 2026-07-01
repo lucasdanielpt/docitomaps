@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl, { type LngLatBoundsLike } from 'maplibre-gl';
 import type { LineStringGeometry, Waypoint } from '@docitomapas/shared';
 import { useRouteStore } from '@/stores/routeStore';
@@ -58,6 +58,7 @@ export function MapView() {
   const cumulativeRef = useRef<CumulativeDistances | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
+  const [gltfLoaded, setGltfLoaded] = useState(false);
 
   const origin = useRouteStore((s) => s.origin);
   const destination = useRouteStore((s) => s.destination);
@@ -245,12 +246,23 @@ export function MapView() {
         const layer = new CharacterLayer();
         characterLayerRef.current = layer;
         map.addLayer(layer);
+        setGltfLoaded(false);
+        // Poll para descobrir quando o .glb entrou (se entrou).
+        const poll = setInterval(() => {
+          if (characterLayerRef.current?.isUsingGltf) {
+            setGltfLoaded(true);
+            clearInterval(poll);
+          }
+        }, 250);
+        // Para de poll depois de 6s de qualquer forma
+        setTimeout(() => clearInterval(poll), 6000);
       }
     } else {
       if (characterLayerRef.current && map.getLayer(CHARACTER_LAYER_ID)) {
         map.removeLayer(CHARACTER_LAYER_ID);
       }
       characterLayerRef.current = null;
+      setGltfLoaded(false);
     }
   }, [cinema, route]);
 
@@ -352,5 +364,27 @@ export function MapView() {
     }
   }, [progress, cinema, route, speed]);
 
-  return <div ref={containerRef} className="h-full w-full" aria-label="Mapa" role="region" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" aria-label="Mapa" role="region" />
+      {cinema && (
+        <div className="pointer-events-none absolute right-4 top-4 z-10">
+          <span
+            className={
+              'inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/90 px-3 py-1 text-xs font-semibold shadow-soft backdrop-blur ' +
+              (gltfLoaded ? 'text-primary' : 'text-muted-foreground')
+            }
+            title={
+              gltfLoaded
+                ? 'Modelo Mixamo (.glb) carregado'
+                : 'Boneco procedural (adicione /models/character.glb)'
+            }
+          >
+            <span aria-hidden>{gltfLoaded ? '✨' : '🍬'}</span>
+            {gltfLoaded ? 'Mixamo' : 'Modo doce'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }

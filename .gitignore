@@ -42,3 +42,7 @@ test-results/
 .cache/
 .vite/
 .eslintcache
+
+# Assets 3D grandes — comitar apenas em CDN
+apps/web/public/models/*.glb
+apps/web/public/models/*.fbx
