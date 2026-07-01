@@ -42,26 +42,12 @@ export function StopsList() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">
-          Paradas intermediárias ({stops.length}/25)
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+          Paradas · {stops.length}/25
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => addStop()}
-          disabled={stops.length >= 25}
-        >
-          <Plus className="h-4 w-4" />
-          Adicionar parada
-        </Button>
       </div>
 
-      {stops.length === 0 ? (
-        <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Nenhuma parada. Clique em <span className="font-medium">Adicionar parada</span>.
-        </div>
-      ) : (
+      {stops.length > 0 && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={stops.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
@@ -72,6 +58,15 @@ export function StopsList() {
           </SortableContext>
         </DndContext>
       )}
+
+      <button
+        type="button"
+        onClick={() => addStop()}
+        disabled={stops.length >= 25}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-dashed border-primary/40 bg-transparent text-sm font-semibold text-primary transition hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Plus className="h-4 w-4" /> Adicionar parada
+      </button>
     </div>
   );
 }

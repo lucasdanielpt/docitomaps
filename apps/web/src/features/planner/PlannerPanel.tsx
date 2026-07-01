@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flag, MapPin, Loader2, Wand2, RotateCcw } from 'lucide-react';
+import { Flag, Loader2, MapPin, RotateCcw, Sparkles, Wand2 } from 'lucide-react';
 import type { TravelMode } from '@docitomapas/shared';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -17,12 +17,12 @@ import { StopsList } from './StopsList';
 import { fetchRoute, optimizeRoute } from '@/services/api';
 import { formatDistanceMeters, formatDurationSeconds, uid } from '@/lib/utils';
 
-const TRAVEL_MODES: Array<{ value: TravelMode; label: string }> = [
-  { value: 'driving-car', label: 'Carro' },
-  { value: 'driving-hgv', label: 'Caminhão' },
-  { value: 'cycling-regular', label: 'Bicicleta' },
-  { value: 'foot-walking', label: 'A pé' },
-  { value: 'foot-hiking', label: 'Trilha' },
+const TRAVEL_MODES: Array<{ value: TravelMode; label: string; emoji: string }> = [
+  { value: 'driving-car', label: 'Carro', emoji: '🚗' },
+  { value: 'driving-hgv', label: 'Caminhão', emoji: '🚚' },
+  { value: 'cycling-regular', label: 'Bicicleta', emoji: '🚲' },
+  { value: 'foot-walking', label: 'A pé', emoji: '🚶' },
+  { value: 'foot-hiking', label: 'Trilha', emoji: '🥾' },
 ];
 
 export function PlannerPanel() {
@@ -70,131 +70,147 @@ export function PlannerPanel() {
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao calcular rota');
+      setError(err instanceof Error ? err.message : 'Não deu para calcular agora, tente de novo.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden border-r bg-background md:w-[400px] lg:w-[440px]">
-      <div className="border-b p-4">
-        <h2 className="text-lg font-semibold">Planeje sua rota</h2>
-        <p className="text-sm text-muted-foreground">
-          Defina origem, paradas e destino. O DocitoMapas otimiza a ordem para o menor tempo.
-        </p>
-      </div>
+    <section
+      className="flex h-full w-full flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/80 shadow-candy backdrop-blur"
+      aria-labelledby="planner-title"
+    >
+      <header className="flex items-baseline justify-between border-b border-border/40 px-6 py-5">
+        <h2 id="planner-title" className="font-display text-xl font-semibold text-foreground">
+          Seu roteiro
+        </h2>
+        <button
+          type="button"
+          onClick={reset}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-primary"
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Limpar tudo
+        </button>
+      </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
         <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-emerald-600" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Partida
-          </Label>
+          </span>
           <AddressInput
             value={origin}
             onSelect={(wp) => setOrigin({ ...wp, id: origin?.id ?? uid(), label: 'Partida' })}
-            placeholder="De onde você sai?"
-            iconColor="text-emerald-600"
+            placeholder="De onde você sai? Ex: Rua das Balas, 100"
+            icon={<MapPin className="h-4 w-4 text-emerald-600" aria-hidden />}
           />
         </div>
 
         <StopsList />
 
         <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            <Flag className="h-4 w-4 text-rose-600" />
-            Destino
-          </Label>
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+            Destino final
+          </span>
           <AddressInput
             value={destination}
-            onSelect={(wp) => setDestination({ ...wp, id: destination?.id ?? uid(), label: 'Destino' })}
-            placeholder="Para onde você vai?"
-            iconColor="text-rose-600"
+            onSelect={(wp) =>
+              setDestination({ ...wp, id: destination?.id ?? uid(), label: 'Destino' })
+            }
+            placeholder="Para onde vamos? Ex: Confeitaria Central"
+            icon={<Flag className="h-4 w-4 text-primary" aria-hidden />}
           />
         </div>
 
-        <div className="space-y-3 rounded-md border p-3">
-          <div className="space-y-2">
-            <Label>Modo de transporte</Label>
-            <Select value={mode} onValueChange={(v) => setMode(v as TravelMode)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TRAVEL_MODES.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="optimize">Otimizar ordem das paradas</Label>
-              <p className="text-xs text-muted-foreground">
-                Encontra a melhor sequência (menor tempo).
-              </p>
+        <div className="rounded-2xl border border-border/60 bg-background/60 p-4 shadow-soft">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Modo da viagem
+              </Label>
+              <Select value={mode} onValueChange={(v) => setMode(v as TravelMode)}>
+                <SelectTrigger className="h-11 rounded-full border-border bg-card/80 pl-4">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRAVEL_MODES.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      <span className="mr-2">{m.emoji}</span>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Switch id="optimize" checked={optimize} onCheckedChange={setOptimize} />
-          </div>
 
-          <details className="text-sm">
-            <summary className="cursor-pointer select-none text-muted-foreground">
-              Preferências avançadas
-            </summary>
-            <div className="mt-2 space-y-2 pl-1">
-              <label className="flex items-center justify-between">
-                <span>Evitar pedágios</span>
-                <Switch
-                  checked={Boolean(preferences.avoidTolls)}
-                  onCheckedChange={(v) => setPreference('avoidTolls', v)}
-                />
-              </label>
-              <label className="flex items-center justify-between">
-                <span>Evitar rodovias</span>
-                <Switch
-                  checked={Boolean(preferences.avoidHighways)}
-                  onCheckedChange={(v) => setPreference('avoidHighways', v)}
-                />
-              </label>
-              <label className="flex items-center justify-between">
-                <span>Evitar balsas</span>
-                <Switch
-                  checked={Boolean(preferences.avoidFerries)}
-                  onCheckedChange={(v) => setPreference('avoidFerries', v)}
-                />
-              </label>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label htmlFor="optimize" className="cursor-pointer text-sm font-semibold">
+                  Organizar as paradas para mim
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  A gente escolhe a ordem que economiza mais tempo.
+                </p>
+              </div>
+              <Switch id="optimize" checked={optimize} onCheckedChange={setOptimize} />
             </div>
-          </details>
+
+            <details className="text-sm">
+              <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-primary">
+                Preferências avançadas
+              </summary>
+              <div className="mt-3 space-y-2 rounded-xl bg-secondary/40 p-3">
+                <label className="flex items-center justify-between text-sm">
+                  <span>Evitar pedágios</span>
+                  <Switch
+                    checked={Boolean(preferences.avoidTolls)}
+                    onCheckedChange={(v) => setPreference('avoidTolls', v)}
+                  />
+                </label>
+                <label className="flex items-center justify-between text-sm">
+                  <span>Evitar rodovias</span>
+                  <Switch
+                    checked={Boolean(preferences.avoidHighways)}
+                    onCheckedChange={(v) => setPreference('avoidHighways', v)}
+                  />
+                </label>
+                <label className="flex items-center justify-between text-sm">
+                  <span>Evitar balsas</span>
+                  <Switch
+                    checked={Boolean(preferences.avoidFerries)}
+                    onCheckedChange={(v) => setPreference('avoidFerries', v)}
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
         </div>
 
         {error && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
         {route && (
-          <div className="rounded-md border bg-primary/5 p-3 text-sm">
+          <div className="rounded-2xl border border-primary/20 bg-gradient-sprinkle/60 p-4 text-sm">
             <div className="flex items-baseline justify-between">
-              <span className="font-medium">Resultado</span>
-              <span className="text-xs text-muted-foreground">
-                {route.legs.length} trechos
-              </span>
+              <span className="font-display text-base font-semibold">Caminho mais docinho ✨</span>
+              <span className="text-xs text-muted-foreground">{route.legs.length} trechos</span>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-muted-foreground">Distância</div>
-                <div className="font-semibold">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Distância
+                </div>
+                <div className="font-display text-lg font-semibold">
                   {formatDistanceMeters(route.totalDistanceMeters)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Tempo</div>
-                <div className="font-semibold">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Tempo</div>
+                <div className="font-display text-lg font-semibold">
                   {formatDurationSeconds(route.totalDurationSeconds)}
                 </div>
               </div>
@@ -203,35 +219,35 @@ export function PlannerPanel() {
         )}
       </div>
 
-      <div className="flex gap-2 border-t p-4">
+      <div className="border-t border-border/40 p-6">
         <Button
           type="button"
-          variant="outline"
-          size="icon"
-          onClick={reset}
-          title="Limpar tudo"
-          aria-label="Limpar tudo"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          className="flex-1"
+          variant="candy"
           size="lg"
+          className="w-full"
           onClick={handleCalculate}
           disabled={!canCalculate || loading}
         >
           {loading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Calculando…
+              <Loader2 className="h-5 w-5 animate-spin" /> Calculando…
             </>
           ) : (
             <>
-              <Wand2 className="h-4 w-4" /> Calcular rota
+              <Sparkles className="h-5 w-5" /> Calcular caminho mais rápido
             </>
           )}
         </Button>
+        {!canCalculate && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Preencha partida e destino para começar.
+          </p>
+        )}
+        {/* Referência ao ícone antigo mantida para não quebrar tree-shaking */}
+        <span className="hidden">
+          <Wand2 />
+        </span>
       </div>
-    </aside>
+    </section>
   );
 }

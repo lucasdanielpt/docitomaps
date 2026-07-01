@@ -1,10 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0ea5e9"/>
-      <stop offset="1" stop-color="#6366f1"/>
+    <linearGradient id="candy" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="oklch(0.78 0.18 355)"/>
+      <stop offset="1" stop-color="oklch(0.72 0.22 10)"/>
     </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="8" fill="url(#g)"/>
-  <path d="M16 6c-4 0-7 3-7 7 0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7Zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" fill="#fff"/>
+  <circle cx="20" cy="20" r="18" fill="url(#candy)"/>
+  <!-- twist candy wrapper -->
+  <path d="M8 20c2-3 5-3 6 0s4 3 6 0 5-3 6 0 4 3 6 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="20" cy="20" r="4" fill="#fff"/>
 </svg>

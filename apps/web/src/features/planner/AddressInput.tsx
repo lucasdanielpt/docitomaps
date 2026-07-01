@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { GeocodeResult, Waypoint } from '@docitomapas/shared';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,7 @@ export interface AddressInputProps {
   value: Waypoint | null;
   onSelect: (wp: Waypoint) => void;
   placeholder?: string;
-  iconColor?: string;
+  icon?: React.ReactNode;
   autoFocus?: boolean;
 }
 
@@ -17,7 +18,7 @@ export function AddressInput({
   value,
   onSelect,
   placeholder = 'Digite um endereço...',
-  iconColor = 'text-primary',
+  icon,
   autoFocus,
 }: AddressInputProps) {
   const [query, setQuery] = useState(value?.address ?? '');
@@ -80,13 +81,14 @@ export function AddressInput({
     setOpen(false);
   }
 
+  const defaultIcon = <MapPin className="h-4 w-4 text-primary" aria-hidden />;
+
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <MapPin
-          className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${iconColor}`}
-          aria-hidden
-        />
+        <span className="pointer-events-none absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-secondary">
+          {icon ?? defaultIcon}
+        </span>
         <Input
           value={query}
           onChange={(e) => {
@@ -95,18 +97,18 @@ export function AddressInput({
           }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
-          className="pl-9 pr-9"
+          className="pl-12 pr-10"
           autoFocus={autoFocus}
           aria-autocomplete="list"
           aria-expanded={open}
         />
         {loading && (
-          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          <Loader2 className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
 
       {open && (results.length > 0 || error) && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-md border bg-background shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-auto rounded-2xl border border-border/60 bg-card/95 shadow-candy backdrop-blur">
           {error && (
             <div className="p-3 text-sm text-destructive" role="alert">
               {error}
@@ -117,7 +119,7 @@ export function AddressInput({
               type="button"
               key={`${r.label}-${i}`}
               onClick={() => handleSelect(r)}
-              className="flex w-full items-start gap-2 border-b px-3 py-2 text-left text-sm hover:bg-accent last:border-b-0"
+              className="flex w-full items-start gap-2 border-b border-border/40 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-secondary/60"
             >
               <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="line-clamp-2">{r.label}</span>

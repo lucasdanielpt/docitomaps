@@ -16,9 +16,9 @@ interface OrderedWaypoint {
 }
 
 function markerColor(kind: OrderedWaypoint['kind']): string {
-  if (kind === 'origin') return '#059669';
-  if (kind === 'destination') return '#e11d48';
-  return '#f97316';
+  if (kind === 'origin') return 'oklch(0.62 0.16 155)';
+  if (kind === 'destination') return 'oklch(0.62 0.24 10)';
+  return 'oklch(0.78 0.18 355)';
 }
 
 function computeBoundsFromGeom(geom: LineStringGeometry): LngLatBoundsLike | null {
@@ -103,9 +103,9 @@ export function MapView() {
         source: ROUTE_SOURCE_ID,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#1e293b',
-          'line-width': 8,
-          'line-opacity': 0.35,
+          'line-color': '#ffffff',
+          'line-width': 9,
+          'line-opacity': 0.9,
         },
       });
       map.addLayer({
@@ -114,7 +114,7 @@ export function MapView() {
         source: ROUTE_SOURCE_ID,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#2563eb',
+          'line-color': 'oklch(0.68 0.22 355)',
           'line-width': 5,
         },
       });

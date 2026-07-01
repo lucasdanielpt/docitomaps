@@ -559,4 +559,25 @@ Um usuário anônimo consegue, sem tutorial:
 
 ---
 
+## 17. Design System (obrigatório)
+
+- A pasta [`design-system/`](./design-system/) é a **fonte de verdade visual** do produto. Antes de criar qualquer tela, componente ou variação de estilo, o agente **deve** consultá-la.
+- Arquivos relevantes:
+  - `design-system/styles.css` — tokens (cores em `oklch`, radius, gradientes, sombras) e diretivas Tailwind.
+  - `design-system/image.png` — mock de referência da tela principal (identidade "Docito").
+- Diretrizes obrigatórias:
+  1. **Paleta "candy"**: fundo cotton-candy com gradientes radiais suaves (rosa/pêssego), superfícies em creme quase-branco, primária rosa vivo (`--candy-pink`), acento morango (`--candy-berry`).
+  2. **Tipografia**:
+     - **Fraunces** (serif) para `h1`/`h2`/`h3` e elementos com classe `font-display` — letter-spacing levemente apertado.
+     - **Nunito** para o restante (`body`, botões, formulários).
+  3. **Radius grande** (`--radius: 1rem`) e sombras rosadas em vez de neutras (`--shadow-candy`, `--shadow-soft`).
+  4. **Botão CTA principal**: gradiente `--gradient-candy` + sombra `--shadow-candy` + ícone à esquerda.
+  5. **Tom de voz** dos placeholders/labels: acolhedor e temático ("Uma docinho no caminho...", "Ex: Confeitaria Central", "Rua das Balas, 100"). Nunca genérico.
+  6. **Logo & branding**: nome "**Docito**Mapas" com "Mapas" em rosa vivo; ícone circular rosa com desenho de doce; tagline "Roteiros com sabor de caramelo".
+- Ao adicionar cor/token novo, **primeiro** verificar se algo do design-system já cobre; **só** adicionar novo se realmente inexistente, mantendo o formato `oklch`.
+- Modo escuro (`.dark`) segue os tokens definidos em `design-system/styles.css`.
+- O `design-system/styles.css` está em sintaxe Tailwind v4; o projeto usa Tailwind v3. É aceitável traduzir os tokens fielmente (mesmos valores `oklch`, mesmas fontes, mesmos radius/sombras) para o `tailwind.config.js` e `apps/web/src/index.css` — mas **não** desviar da paleta.
+
+---
+
 *Fim do documento. Boas construções!*

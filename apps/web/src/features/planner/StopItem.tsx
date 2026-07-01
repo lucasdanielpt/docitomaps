@@ -26,32 +26,39 @@ export function StopItem({ stop, index }: StopItemProps) {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const stopPlaceholders = [
+    'Uma docinho no caminho…',
+    'Outra paradinha? Ex: Padaria da esquina',
+    'Que tal um café? Ex: Cafeteria Doce',
+    'Uma parada extra? Ex: Sorveteria',
+  ];
+  const placeholder = stopPlaceholders[index % stopPlaceholders.length] ?? 'Mais uma parada…';
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="rounded-md border bg-card p-2 shadow-sm"
+      className="rounded-2xl border border-border/60 bg-card/80 p-2 shadow-soft backdrop-blur"
       aria-label={`Parada ${index + 1}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <button
           type="button"
-          className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent active:cursor-grabbing"
+          className="flex h-9 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/70 hover:text-primary active:cursor-grabbing"
           aria-label="Reordenar"
           {...attributes}
           {...listeners}
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-          {index + 1}
-        </span>
         <div className="min-w-0 flex-1">
           <AddressInput
             value={stop}
             onSelect={(wp) => updateStop(stop.id, { address: wp.address, location: wp.location })}
-            placeholder={`Parada ${index + 1}...`}
-            iconColor="text-orange-500"
+            placeholder={placeholder}
+            icon={
+              <span className="text-xs font-semibold text-primary">{index + 1}</span>
+            }
           />
         </div>
         <Button
@@ -61,6 +68,7 @@ export function StopItem({ stop, index }: StopItemProps) {
           onClick={() => toggleFixed(stop.id)}
           title={stop.fixedOrder ? 'Ordem fixa (clique para liberar)' : 'Ordem livre (clique para fixar)'}
           aria-label="Alternar ordem fixa"
+          className="h-9 w-9"
         >
           {stop.fixedOrder ? (
             <Lock className="h-4 w-4 text-primary" />
@@ -75,6 +83,7 @@ export function StopItem({ stop, index }: StopItemProps) {
           onClick={() => removeStop(stop.id)}
           title="Remover parada"
           aria-label="Remover parada"
+          className="h-9 w-9"
         >
           <Trash2 className="h-4 w-4 text-destructive" />
         </Button>

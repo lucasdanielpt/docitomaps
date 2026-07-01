@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Map as MapIcon, TriangleAlert } from 'lucide-react';
+import { Sparkles, TriangleAlert } from 'lucide-react';
+import { LogoWordmark } from '@/components/brand/Logo';
+import { Chip } from '@/components/ui/chip';
 import { PlannerPanel } from '@/features/planner/PlannerPanel';
 import { MapView } from '@/features/map/MapView';
 import { fetchHealth } from '@/services/api';
@@ -14,31 +16,23 @@ export function PlannerPage() {
   }, []);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background px-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-indigo-500 text-white">
-            <MapIcon className="h-4 w-4" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold leading-none">DocitoMapas</h1>
-            <p className="text-xs leading-tight text-muted-foreground">
-              Guia 3D de Roteiros de Viagem
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="hidden sm:inline">© OpenStreetMap contributors</span>
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/70 px-4 py-3 backdrop-blur md:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <LogoWordmark />
+          <Chip>
+            <Sparkles className="h-3 w-3 text-primary" />
+            Sem cadastro — comece já
+          </Chip>
         </div>
       </header>
 
       {orsWarning && (
-        <div className="flex items-center gap-2 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+        <div className="mx-auto mt-4 flex max-w-7xl items-center gap-2 rounded-2xl border border-amber-300/60 bg-amber-50/80 px-4 py-2.5 text-sm text-amber-900 shadow-soft">
           <TriangleAlert className="h-4 w-4 shrink-0" />
           <span>
-            Backend sem <strong>ORS_API_KEY</strong> configurada. Busca de endereços e cálculo de
-            rotas estão desativados até que uma chave gratuita seja adicionada em{' '}
-            <code className="rounded bg-amber-100 px-1">apps/api/.env</code> (obtenha em{' '}
+            Backend sem <strong>ORS_API_KEY</strong>. Adicione a chave em{' '}
+            <code className="rounded bg-amber-100 px-1">apps/api/.env</code> — grátis em{' '}
             <a
               className="underline"
               href="https://openrouteservice.org/dev/#/signup"
@@ -47,16 +41,42 @@ export function PlannerPage() {
             >
               openrouteservice.org
             </a>
-            ).
+            .
           </span>
         </div>
       )}
 
-      <main className="flex flex-1 overflow-hidden">
-        <PlannerPanel />
-        <section className="relative flex-1 bg-muted">
-          <MapView />
+      <main className="mx-auto max-w-7xl px-4 pb-16 pt-10 md:px-8">
+        <section className="mx-auto max-w-3xl text-center">
+          <Chip>
+            <span aria-hidden>🍭</span> Planeje. Adoce. Viaje.
+          </Chip>
+          <h1 className="mt-5 text-balance font-display text-4xl font-semibold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-6xl">
+            Monte seu roteiro e receba o caminho mais{' '}
+            <span className="text-primary">docinho</span> — o mais rápido de todos.
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-muted-foreground md:text-lg">
+            Adicione a partida, quantas paradas quiser e o destino final. A gente organiza a ordem
+            das paradas para você economizar tempo na estrada.
+          </p>
         </section>
+
+        <section
+          className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(380px,440px)_1fr]"
+          aria-label="Planejador"
+        >
+          <div className="min-h-[560px]">
+            <PlannerPanel />
+          </div>
+          <div className="relative min-h-[560px] overflow-hidden rounded-3xl border border-border/60 bg-card/80 shadow-candy backdrop-blur">
+            <MapView />
+          </div>
+        </section>
+
+        <footer className="mt-10 text-center text-xs text-muted-foreground">
+          Feito com <span className="text-primary">♥</span> e tiles © OpenStreetMap contributors.
+          Roteamento por OpenRouteService.
+        </footer>
       </main>
     </div>
   );
