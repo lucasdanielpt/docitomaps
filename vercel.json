@@ -6,7 +6,7 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
@@ -25,7 +25,22 @@
     "api/health.ts": {
       "maxDuration": 10
     },
-    "api/[...path].ts": {
+    "api/geocode.js": {
+      "maxDuration": 30,
+      "memory": 1024,
+      "includeFiles": "api/handler.cjs"
+    },
+    "api/route.js": {
+      "maxDuration": 30,
+      "memory": 1024,
+      "includeFiles": "api/handler.cjs"
+    },
+    "api/optimize.js": {
+      "maxDuration": 30,
+      "memory": 1024,
+      "includeFiles": "api/handler.cjs"
+    },
+    "api/[...path].js": {
       "maxDuration": 30,
       "memory": 1024,
       "includeFiles": "api/handler.cjs"
