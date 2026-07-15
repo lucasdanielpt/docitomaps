@@ -45,7 +45,9 @@ test-results/
 
 # Vercel API bundle (gerado no build)
 api/handler.cjs
+api/handler.mjs
 apps/web/api/handler.cjs
+apps/web/api/handler.mjs
 
 # Assets 3D grandes — comitar apenas em CDN
 apps/web/public/models/*.glb
