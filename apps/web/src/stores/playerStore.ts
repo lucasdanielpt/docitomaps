@@ -58,7 +58,7 @@ export interface PlayerState {
   pause: () => void;
   togglePlay: () => void;
   setProgress: (p: number) => void;
-  setSpeed: (s: Speed) => void;
+  setSpeed: (s: Speed, opts?: { bypassRealistic3DCap?: boolean }) => void;
   setCameraMode: (m: CameraMode) => void;
   setRealistic3D: (v: boolean) => void;
   toggleRealistic3D: () => void;
@@ -112,10 +112,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   togglePlay: () => set((s) => ({ playing: !s.playing })),
 
   setProgress: (p) => set({ progress: Math.max(0, Math.min(1, p)) }),
-  setSpeed: (s) =>
+  setSpeed: (s, opts) =>
     set((state) => ({
       speed:
-        state.realistic3D && s > REALISTIC3D_MAX_SPEED
+        !opts?.bypassRealistic3DCap && state.realistic3D && s > REALISTIC3D_MAX_SPEED
           ? REALISTIC3D_MAX_SPEED
           : s,
     })),
@@ -143,12 +143,13 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     }),
 
   setRealistic3DCamera: (m) =>
-    set({
+    set((s) => ({
       realistic3DCamera: m,
       streetViewReady: false,
       streetViewUnavailable: false,
-      cesiumTilesReady: m === 'isometric' ? false : true,
-    }),
+      // Não zera tiles se o Cesium já carregou (evita bloquear play a cada troca).
+      cesiumTilesReady: m === 'isometric' ? s.cesiumTilesReady : true,
+    })),
 
   setZoomPreset: (z) => set({ zoomPreset: z }),
 

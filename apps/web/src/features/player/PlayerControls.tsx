@@ -35,26 +35,26 @@ const CAMERA_MODES_3D: Array<{ value: Realistic3DCameraMode; label: string }> = 
 
 export function PlayerControls() {
   const route = useRouteStore((s) => s.route);
-  const {
-    playing,
-    progress,
-    speed,
-    realistic3D,
-    realistic3DCamera,
-    cameraMode,
-    isExporting,
-    cesiumTilesReady,
-    cesiumRefinementProgress,
-    streetViewReady,
-    streetViewUnavailable,
-    togglePlay,
-    setProgress,
-    setSpeed,
-    setCameraMode,
-    setRealistic3DCamera,
-    toggleRealistic3D,
-    pause,
-  } = usePlayerStore();
+
+  // Seletores estreitos — evita re-render a cada tick de exportProgress/refinement.
+  const playing = usePlayerStore((s) => s.playing);
+  const progress = usePlayerStore((s) => s.progress);
+  const speed = usePlayerStore((s) => s.speed);
+  const realistic3D = usePlayerStore((s) => s.realistic3D);
+  const realistic3DCamera = usePlayerStore((s) => s.realistic3DCamera);
+  const cameraMode = usePlayerStore((s) => s.cameraMode);
+  const isExporting = usePlayerStore((s) => s.isExporting);
+  const cesiumTilesReady = usePlayerStore((s) => s.cesiumTilesReady);
+  const cesiumRefinementProgress = usePlayerStore((s) => s.cesiumRefinementProgress);
+  const streetViewReady = usePlayerStore((s) => s.streetViewReady);
+  const streetViewUnavailable = usePlayerStore((s) => s.streetViewUnavailable);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const setProgress = usePlayerStore((s) => s.setProgress);
+  const setSpeed = usePlayerStore((s) => s.setSpeed);
+  const setCameraMode = usePlayerStore((s) => s.setCameraMode);
+  const setRealistic3DCamera = usePlayerStore((s) => s.setRealistic3DCamera);
+  const toggleRealistic3D = usePlayerStore((s) => s.toggleRealistic3D);
+  const pause = usePlayerStore((s) => s.pause);
 
   const mapBaseStyle = useMapStore((s) => s.mapBaseStyle);
   const setMapBaseStyle = useMapStore((s) => s.setMapBaseStyle);

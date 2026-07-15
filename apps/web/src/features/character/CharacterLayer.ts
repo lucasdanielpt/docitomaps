@@ -159,16 +159,26 @@ export class CharacterLayer implements CustomLayerInterface {
     speedNormalized: number,
     motion: CharacterMotion = 'walk',
   ): void {
+    const moved =
+      Math.abs(lng - this.currentLng) > 1e-9 ||
+      Math.abs(lat - this.currentLat) > 1e-9 ||
+      Math.abs(headingDeg - this.currentHeadingDeg) > 0.05;
+    const motionChanged = motion !== this.currentMotion;
+
     this.currentLng = lng;
     this.currentLat = lat;
     this.currentHeadingDeg = headingDeg;
     this.currentSpeedNormalized = Math.max(0, Math.min(1, speedNormalized));
-    if (motion !== this.currentMotion) {
+    if (motionChanged) {
       this.currentMotion = motion;
       this.applyMotion(motion);
     }
     this.hasPosition = true;
-    this.map?.triggerRepaint();
+
+    // Repaint só se algo mudou ou a animação precisa de frames.
+    if (moved || motionChanged || (this.mixer != null && this.currentMotion !== 'idle')) {
+      this.map?.triggerRepaint();
+    }
   }
 
   setModelVisible(visible: boolean): void {
@@ -187,14 +197,15 @@ export class CharacterLayer implements CustomLayerInterface {
     if (!this.renderer || !this.scene || !this.camera || !this.map) return;
     if (!this.hasPosition) return;
 
+    const animating = this.mixer != null && this.currentMotion !== 'idle';
     const dt = this.clock.getDelta();
-    if (this.mixer && this.currentMotion !== 'idle') {
+    if (animating) {
       const base =
         this.currentMotion === 'run'
           ? 1.4 + this.currentSpeedNormalized * 2.2
           : 0.6 + this.currentSpeedNormalized * 1.8;
-      this.mixer.timeScale = base;
-      this.mixer.update(dt);
+      this.mixer!.timeScale = base;
+      this.mixer!.update(dt);
     }
 
     const merc = MercatorCoordinate.fromLngLat(
@@ -214,7 +225,7 @@ export class CharacterLayer implements CustomLayerInterface {
       headingRad,
     );
 
-    const m = new THREE.Matrix4().fromArray(Array.from(matrix as ArrayLike<number>));
+    const m = new THREE.Matrix4().fromArray(matrix as unknown as number[]);
     const l = new THREE.Matrix4()
       .makeTranslation(merc.x, merc.y, merc.z)
       .scale(new THREE.Vector3(meterScale, -meterScale, meterScale))
@@ -244,7 +255,11 @@ export class CharacterLayer implements CustomLayerInterface {
       });
     }
 
-    this.map.triggerRepaint();
+    // Só pede novo frame enquanto a animação do personagem está ativa.
+    // Antes: triggerRepaint() infinito → GPU quente mesmo pausado.
+    if (animating) {
+      this.map.triggerRepaint();
+    }
   };
 
   private async tryLoadFirstAvailable(urls: string[]): Promise<void> {

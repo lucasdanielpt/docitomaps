@@ -40,8 +40,8 @@ const FPS_OPTIONS: Array<{ value: VideoFps; label: string }> = [
 ];
 
 const FORMATS: Array<{ value: VideoFormat; label: string; hint?: string }> = [
-  { value: 'webm', label: 'WebM', hint: 'rápido, compatível com Chrome/Firefox' },
-  { value: 'mp4', label: 'MP4', hint: 'transcodifica no navegador (~30s extra)' },
+  { value: 'webm', label: 'WebM', hint: 'recomendado — rápido' },
+  { value: 'mp4', label: 'MP4', hint: 'mais lento (converte no navegador)' },
 ];
 
 function phaseLabel(phase: ExportPhase): string {
@@ -189,9 +189,13 @@ export function ExportVideoDialog() {
           {format === 'mp4' && (
             <p className="text-xs text-muted-foreground">
               MP4 usa ffmpeg.wasm no navegador — a primeira exportação pode demorar um pouco mais
-              enquanto o encoder carrega.
+              enquanto o encoder carrega. Prefira WebM para algo mais rápido.
             </p>
           )}
+          <p className="text-xs text-muted-foreground">
+            Dica: desative Foto 3D (ou use Isométrica) para exportar. Street View (1ª pessoa) não
+            é suportado na exportação.
+          </p>
 
           {busy && (
             <div className="space-y-2 rounded-2xl border border-border/50 bg-secondary/30 p-3">

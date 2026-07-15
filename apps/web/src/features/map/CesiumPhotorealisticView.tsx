@@ -252,7 +252,10 @@ function applyCesiumFrame(
   }
 
   if (update.cameraMode === 'free') {
-    viewer.scene.requestRender();
+    // Em câmera livre só re-renderiza enquanto a rota anima (ou no 1º frame).
+    if (update.playing) {
+      viewer.scene.requestRender();
+    }
     return;
   }
 
@@ -416,6 +419,7 @@ export const CesiumPhotorealisticView = forwardRef<
             alpha: false,
             antialias: true,
             powerPreference: 'high-performance',
+            preserveDrawingBuffer: true,
           },
         },
       });

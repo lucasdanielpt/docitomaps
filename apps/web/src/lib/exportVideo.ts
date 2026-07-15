@@ -39,8 +39,14 @@ function scaleFilterForResolution(resolution: VideoResolution): string | null {
 }
 
 export function findMapCanvas(): HTMLCanvasElement | null {
-  const cesiumCanvas = document.querySelector('.cesium-viewer canvas');
-  if (cesiumCanvas instanceof HTMLCanvasElement) return cesiumCanvas;
+  // Preferir canvas Cesium se o viewer estiver ativo (não oculto).
+  const cesiumHost = document.querySelector(
+    '[aria-label="Mapa fotorrealista 3D"]',
+  ) as HTMLElement | null;
+  if (cesiumHost && !cesiumHost.classList.contains('opacity-0')) {
+    const cesiumCanvas = cesiumHost.querySelector('canvas');
+    if (cesiumCanvas instanceof HTMLCanvasElement) return cesiumCanvas;
+  }
   const mapCanvas = document.querySelector('canvas.maplibregl-canvas');
   return mapCanvas instanceof HTMLCanvasElement ? mapCanvas : null;
 }
@@ -85,7 +91,18 @@ async function transcodeWebmToMp4(
   const scale = scaleFilterForResolution(resolution);
   const args = ['-i', inputName];
   if (scale) args.push('-vf', scale);
-  args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-movflags', '+faststart', outputName);
+  // ultrafast = encode bem mais rápido (arquivo um pouco maior).
+  args.push(
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-crf',
+    '28',
+    '-movflags',
+    '+faststart',
+    outputName,
+  );
 
   ffmpeg.on('progress', ({ progress }) => {
     onProgress(Math.max(0, Math.min(1, progress ?? 0)));
@@ -116,14 +133,21 @@ export interface RecordRouteVideoCallbacks {
 }
 
 /**
- * Grava a animação da rota via MediaRecorder no canvas do MapLibre.
- * A animação roda acelerada (16x) enquanto grava; opcionalmente transcodifica para MP4.
+ * Grava a animação da rota via MediaRecorder no canvas do mapa.
+ * Roda acelerada (16x; no Foto 3D também, via bypass do cap) e opcionalmente transcodifica MP4.
  */
 export async function recordRouteVideo(
   options: VideoExportOptions,
   callbacks: RecordRouteVideoCallbacks,
   signal?: AbortSignal,
 ): Promise<Blob> {
+  const storeSnapshot = usePlayerStore.getState();
+  if (storeSnapshot.realistic3D && storeSnapshot.realistic3DCamera === 'first-person') {
+    throw new Error(
+      'Exportação não está disponível no modo Street View (1ª pessoa). Use Isométrica ou desative Foto 3D.',
+    );
+  }
+
   const canvas = findMapCanvas();
   if (!canvas) {
     throw new Error('Canvas do mapa não encontrado. Abra o modo cinema antes de exportar.');
@@ -139,7 +163,8 @@ export async function recordRouteVideo(
   store.setExportProgress(0);
   store.pause();
   store.setProgress(0);
-  store.setSpeed(EXPORT_SPEED);
+  // Bypass do limite 2x do Foto 3D — senão a gravação fica lentíssima.
+  store.setSpeed(EXPORT_SPEED, { bypassRealistic3DCap: true });
 
   callbacks.onPhase('recording');
   callbacks.onProgress(0);
@@ -152,6 +177,7 @@ export async function recordRouteVideo(
   });
 
   const chunks: BlobPart[] = [];
+  let lastUiProgress = -1;
 
   return new Promise((resolve, reject) => {
     let unsub: (() => void) | undefined;
@@ -162,12 +188,13 @@ export async function recordRouteVideo(
       settled = true;
       unsub?.();
       stream.getTracks().forEach((t) => t.stop());
-      store.setExporting(false);
-      store.setExportPhase('idle');
-      store.setSpeed(prevSpeed);
-      store.setProgress(prevProgress);
-      if (prevPlaying) store.play();
-      else store.pause();
+      const s = usePlayerStore.getState();
+      s.setExporting(false);
+      s.setExportPhase('idle');
+      s.setSpeed(prevSpeed);
+      s.setProgress(prevProgress);
+      if (prevPlaying) s.play();
+      else s.pause();
       fn();
     };
 
@@ -175,12 +202,17 @@ export async function recordRouteVideo(
       finish(() => reject(err instanceof Error ? err : new Error(String(err))));
     };
 
-    signal?.addEventListener('abort', () => {
-      if (recorder.state !== 'inactive') recorder.stop();
-      store.setExporting(false);
-      store.setExportPhase('idle');
+    const onAbort = () => {
+      if (recorder.state !== 'inactive') {
+        try {
+          recorder.stop();
+        } catch {
+          /* ignore */
+        }
+      }
       fail(new DOMException('Exportação cancelada', 'AbortError'));
-    });
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
@@ -194,17 +226,17 @@ export async function recordRouteVideo(
           let blob = new Blob(chunks, { type: mimeType });
 
           if (options.format === 'mp4') {
-            store.setExportPhase('encoding');
+            usePlayerStore.getState().setExportPhase('encoding');
             callbacks.onPhase('encoding');
             callbacks.onProgress(0.92);
             blob = await transcodeWebmToMp4(blob, options.resolution, (p) => {
               const merged = 0.92 + p * 0.08;
-              store.setExportProgress(merged);
+              usePlayerStore.getState().setExportProgress(merged);
               callbacks.onProgress(merged);
             });
           }
 
-          store.setExportProgress(1);
+          usePlayerStore.getState().setExportProgress(1);
           callbacks.onProgress(1);
           finish(() => resolve(blob));
         } catch (err) {
@@ -213,21 +245,32 @@ export async function recordRouteVideo(
       })();
     };
 
-    unsub = usePlayerStore.subscribe((state) => {
+    // Só reage a mudança de progress — evita loop setExportProgress → subscribe.
+    unsub = usePlayerStore.subscribe((state, prev) => {
+      if (state.progress === prev.progress) return;
+
       const p = Math.min(0.9, state.progress * 0.9);
-      store.setExportProgress(p);
-      callbacks.onProgress(p);
+      // Throttle UI (~10 updates/s) para não saturar React.
+      if (p - lastUiProgress >= 0.02 || state.progress >= 1) {
+        lastUiProgress = p;
+        usePlayerStore.getState().setExportProgress(p);
+        callbacks.onProgress(p);
+      }
+
       if (state.progress >= 1) {
-        store.pause();
+        usePlayerStore.getState().pause();
         if (recorder.state === 'recording') recorder.stop();
       }
     });
 
-    // Aguarda 2 frames para o mapa estabilizar no progresso 0.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        store.play();
-        recorder.start(1000);
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        usePlayerStore.getState().play();
+        recorder.start(250);
       });
     });
   });

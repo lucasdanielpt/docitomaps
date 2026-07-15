@@ -202,6 +202,7 @@ export function MapView() {
     bearing: number;
     pitch: number;
     zoom: number;
+    progress?: number;
   } | null>(null);
   const gltfPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cesiumRef = useRef<CesiumPhotorealisticHandle | null>(null);
@@ -220,14 +221,9 @@ export function MapView() {
   const optimizedOrder = useRouteStore((s) => s.optimizedOrder);
 
   const cinema = usePlayerStore((s) => s.cinema);
-  const playing = usePlayerStore((s) => s.playing);
-  // IMPORTANTE: NÃO subscrever `progress` aqui — ele muda 60x/s durante playback
-  // e forçaria re-render do MapView inteiro em cada frame (câmera "engasgada").
-  // Lemos via getState() dentro do RAF e via store.subscribe() para seek.
-  const speed = usePlayerStore((s) => s.speed);
+  // playing/speed/cameraMode/zoomPreset: lidos via getState() no RAF (sem re-render).
   const realistic3D = usePlayerStore((s) => s.realistic3D);
   const realistic3DCamera = usePlayerStore((s) => s.realistic3DCamera);
-  const zoomPreset = usePlayerStore((s) => s.zoomPreset);
   const cameraMode = usePlayerStore((s) => s.cameraMode);
   const setProgress = usePlayerStore((s) => s.setProgress);
   const pause = usePlayerStore((s) => s.pause);
@@ -289,7 +285,9 @@ export function MapView() {
       center: [-46.6333, -23.5505],
       zoom: 4,
       attributionControl: { compact: true },
-    });
+      // Necessário para MediaRecorder capturar o canvas WebGL na exportação.
+      preserveDrawingBuffer: true,
+    } as maplibregl.MapOptions);
 
     map.on('moveend', () => {
       const c = map.getCenter();
@@ -603,10 +601,16 @@ export function MapView() {
       const dt = (now - last) / 1000;
       lastFrameTimeRef.current = now;
 
-      let currentProgress = usePlayerStore.getState().progress;
-      if (usePlayerStore.getState().playing) {
+      const player = usePlayerStore.getState();
+      const isPlaying = player.playing;
+      const currentSpeed = player.speed;
+      const currentCameraMode = player.cameraMode;
+      const currentZoomPreset = player.zoomPreset;
+
+      let currentProgress = player.progress;
+      if (isPlaying) {
         // 1 unidade de progress = totalDurSec segundos em velocidade 1x
-        currentProgress += (dt / totalDurSec) * speed;
+        currentProgress += (dt / totalDurSec) * currentSpeed;
         if (currentProgress >= 1) {
           currentProgress = 1;
           pause();
@@ -618,21 +622,21 @@ export function MapView() {
       if (pos) {
         const cam = computeCinemaCamera(
           pos,
-          cameraMode,
+          currentCameraMode,
           map.getZoom(),
           realistic3D,
-          zoomPreset,
+          currentZoomPreset,
         );
 
-        if (!usePhotorealistic && cameraMode === 'follow') {
-          const last = lastAppliedRef.current;
+        if (!usePhotorealistic && currentCameraMode === 'follow') {
+          const lastCam = lastAppliedRef.current;
           const changed =
-            !last ||
-            Math.abs(last.lng - cam.centerLng) > 1e-9 ||
-            Math.abs(last.lat - cam.centerLat) > 1e-9 ||
-            Math.abs(last.bearing - cam.bearing) > 0.01 ||
-            Math.abs(last.pitch - cam.pitch) > 0.01 ||
-            Math.abs(last.zoom - cam.zoom) > 0.01;
+            !lastCam ||
+            Math.abs(lastCam.lng - cam.centerLng) > 1e-9 ||
+            Math.abs(lastCam.lat - cam.centerLat) > 1e-9 ||
+            Math.abs(lastCam.bearing - cam.bearing) > 0.01 ||
+            Math.abs(lastCam.pitch - cam.pitch) > 0.01 ||
+            Math.abs(lastCam.zoom - cam.zoom) > 0.01;
           if (changed) {
             lastAppliedRef.current = {
               lng: cam.centerLng,
@@ -649,23 +653,29 @@ export function MapView() {
             });
           }
         } else if (useCesium3D) {
-          lastAppliedRef.current = {
-            lng: cam.centerLng,
-            lat: cam.centerLat,
-            bearing: cam.bearing,
-            pitch: cam.pitch,
-            zoom: cam.zoom,
-          };
-          const travelMode = useRouteStore.getState().mode;
-          const isPlaying = usePlayerStore.getState().playing;
-          cesiumRef.current?.syncFrame({
-            pos,
-            cameraMode: 'free',
-            realistic3D: true,
-            currentMapZoom: map.getZoom(),
-            motion: deriveCharacterMotion(travelMode, speed, isPlaying),
-            playing: isPlaying,
-          });
+          const lastCam = lastAppliedRef.current;
+          const seeked =
+            !lastCam ||
+            Math.abs((lastCam.progress ?? -1) - currentProgress) > 1e-9;
+          if (isPlaying || seeked) {
+            lastAppliedRef.current = {
+              lng: cam.centerLng,
+              lat: cam.centerLat,
+              bearing: cam.bearing,
+              pitch: cam.pitch,
+              zoom: cam.zoom,
+              progress: currentProgress,
+            };
+            const travelMode = useRouteStore.getState().mode;
+            cesiumRef.current?.syncFrame({
+              pos,
+              cameraMode: 'free',
+              realistic3D: true,
+              currentMapZoom: map.getZoom(),
+              motion: deriveCharacterMotion(travelMode, currentSpeed, isPlaying),
+              playing: isPlaying,
+            });
+          }
         }
 
         if (!usePhotorealistic) {
@@ -673,12 +683,8 @@ export function MapView() {
             pos.lng,
             pos.lat,
             pos.heading,
-            Math.min(1, speed / 16),
-            deriveCharacterMotion(
-              useRouteStore.getState().mode,
-              speed,
-              usePlayerStore.getState().playing,
-            ),
+            Math.min(1, currentSpeed / 16),
+            deriveCharacterMotion(useRouteStore.getState().mode, currentSpeed, isPlaying),
           );
           characterLayerRef.current?.setModelVisible(cam.modelVisible);
         }
@@ -699,7 +705,7 @@ export function MapView() {
       rafRef.current = null;
       lastFrameTimeRef.current = 0;
     };
-  }, [cinema, route, playing, speed, realistic3D, cameraMode, zoomPreset, setProgress, pause, usePhotorealistic, useCesium3D]);
+  }, [cinema, route, realistic3D, setProgress, pause, usePhotorealistic, useCesium3D]);
 
   // Enquadrar toda a rota ao sair do modo cinema
   useEffect(() => {

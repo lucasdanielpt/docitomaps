@@ -107,11 +107,8 @@ export function StreetViewPane({ route, active }: StreetViewPaneProps) {
 
     const unsub = usePlayerStore.subscribe((state, prev) => {
       if (!active) return;
-      const progressChanged = state.progress !== prev.progress;
-      const playingTick = state.playing;
-      if (progressChanged || playingTick) {
-        void updateFromProgress(state.progress);
-      }
+      if (state.progress === prev.progress) return;
+      void updateFromProgress(state.progress);
     });
 
     void updateFromProgress(usePlayerStore.getState().progress);
