@@ -3,6 +3,5 @@
 docs
 agent-transcripts
 assets
-scripts
 *.md
 !README.md

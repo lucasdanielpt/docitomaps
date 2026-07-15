@@ -2,7 +2,9 @@ import * as esbuild from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/** Local: apps/web/scripts → repo root = ../../.. */
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, '../../..');
 const entry = path.join(repoRoot, 'apps/api/src/vercel.ts');
 const sharedAlias = path.join(repoRoot, 'packages/shared/src/index.ts');
 
