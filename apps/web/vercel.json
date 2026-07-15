@@ -1,9 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm --filter @docitomapas/web build",
+  "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "framework": null,
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/((?!api/|cesiumStatic/).*)",
