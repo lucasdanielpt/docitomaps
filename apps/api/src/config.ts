@@ -18,3 +18,19 @@ export type Env = z.infer<typeof EnvSchema>;
 export const env: Env = EnvSchema.parse(process.env);
 
 export const hasOrsKey = env.ORS_API_KEY.length > 0;
+
+/** Origens CORS — inclui automaticamente o domínio Vercel em produção. */
+export function getCorsOrigins(): string[] {
+  const origins = env.CORS_ORIGIN.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (process.env.VERCEL_URL) {
+    origins.push(`https://${process.env.VERCEL_URL}`);
+  }
+  if (process.env.VERCEL_BRANCH_URL) {
+    origins.push(`https://${process.env.VERCEL_BRANCH_URL}`);
+  }
+
+  return [...new Set(origins)];
+}

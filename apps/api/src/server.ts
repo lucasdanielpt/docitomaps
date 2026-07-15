@@ -1,9 +1,11 @@
 import { setDefaultResultOrder } from 'node:dns';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
-import { env, hasOrsKey } from './config.js';
+import { env, getCorsOrigins, hasOrsKey } from './config.js';
 import { geocodeRoutes } from './routes/geocode.js';
 import { routeRoutes } from './routes/route.js';
 import { optimizeRoutes } from './routes/optimize.js';
@@ -13,18 +15,25 @@ import { optimizeRoutes } from './routes/optimize.js';
 // resolução IPv4-primeiro para evitar o problema em dev.
 setDefaultResultOrder('ipv4first');
 
-async function buildServer() {
+const isVercel = Boolean(process.env.VERCEL);
+
+export async function buildServer() {
   const app = Fastify({
-    logger: {
-      level: env.LOG_LEVEL,
-      transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } },
-    },
+    logger: isVercel
+      ? { level: env.LOG_LEVEL }
+      : {
+          level: env.LOG_LEVEL,
+          transport: {
+            target: 'pino-pretty',
+            options: { colorize: true, translateTime: 'HH:MM:ss' },
+          },
+        },
     bodyLimit: 1 * 1024 * 1024,
   });
 
   await app.register(sensible);
   await app.register(cors, {
-    origin: env.CORS_ORIGIN.split(',').map((s) => s.trim()),
+    origin: getCorsOrigins(),
     credentials: false,
   });
   await app.register(rateLimit, {
@@ -51,7 +60,7 @@ async function start() {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
     if (!hasOrsKey) {
       app.log.warn(
-        '⚠️  ORS_API_KEY não configurada. Endpoints /api/geocode, /api/route e /api/optimize retornarão 503 até a chave ser adicionada em apps/api/.env',
+        '⚠️  ORS_API_KEY não configurada. Endpoints /api/geocode, /api/route e /api/optimize retornarão 503 até a chave ser adicionada.',
       );
     }
   } catch (err) {
@@ -60,4 +69,10 @@ async function start() {
   }
 }
 
-start();
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+
+if (isDirectRun) {
+  void start();
+}

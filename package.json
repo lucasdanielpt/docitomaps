@@ -9,12 +9,14 @@
     "dev:web": "pnpm --filter @docitomapas/web run dev",
     "dev:api": "pnpm --filter @docitomapas/api run dev",
     "build": "pnpm -r run build",
+    "build:vercel": "pnpm --filter @docitomapas/web build",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
+    "@vercel/node": "^5.1.8",
     "prettier": "^3.3.3",
     "typescript": "^5.6.3"
   },
