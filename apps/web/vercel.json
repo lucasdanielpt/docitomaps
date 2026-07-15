@@ -22,6 +22,7 @@
   ],
   "functions": {
     "api/**/*.ts": {
+      "includeFiles": "apps/api/src/**,packages/shared/src/**",
       "maxDuration": 30,
       "memory": 1024
     }

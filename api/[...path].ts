@@ -1,19 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { buildServer } from '../apps/api/src/server.js';
+import { handleVercelRequest } from '../apps/api/src/vercel.js';
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __docitoFastify: Awaited<ReturnType<typeof buildServer>> | undefined;
-}
-
-/**
- * Encaminha /api/* para o Fastify (mesmas rotas do dev local).
- * A instância é reutilizada entre invocações na mesma função serverless.
- */
-export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  if (!global.__docitoFastify) {
-    global.__docitoFastify = await buildServer();
-    await global.__docitoFastify.ready();
-  }
-  global.__docitoFastify.server.emit('request', req, res);
+export default function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  return handleVercelRequest(req, res);
 }

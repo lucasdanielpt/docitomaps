@@ -16,6 +16,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 
 export function PlannerPage() {
   const [orsWarning, setOrsWarning] = useState(false);
+  const [apiOffline, setApiOffline] = useState(false);
   const { sharedName } = useSharedRouteFromUrl();
   const route = useRouteStore((s) => s.route);
   const cinema = usePlayerStore((s) => s.cinema);
@@ -23,8 +24,14 @@ export function PlannerPage() {
 
   useEffect(() => {
     fetchHealth()
-      .then((h) => setOrsWarning(!h.orsKeyConfigured))
-      .catch(() => setOrsWarning(true));
+      .then((h) => {
+        setApiOffline(false);
+        setOrsWarning(!h.orsKeyConfigured);
+      })
+      .catch(() => {
+        setApiOffline(true);
+        setOrsWarning(true);
+      });
   }, []);
 
   return (
@@ -57,17 +64,27 @@ export function PlannerPage() {
         <div className="mx-auto mt-4 flex max-w-7xl items-center gap-2 rounded-2xl border border-amber-300/60 bg-amber-50/80 px-4 py-2.5 text-sm text-amber-900 shadow-soft">
           <TriangleAlert className="h-4 w-4 shrink-0" />
           <span>
-            Backend sem <strong>ORS_API_KEY</strong>. Adicione a chave em{' '}
-            <code className="rounded bg-amber-100 px-1">apps/api/.env</code> — grátis em{' '}
-            <a
-              className="underline"
-              href="https://openrouteservice.org/dev/#/signup"
-              target="_blank"
-              rel="noreferrer"
-            >
-              openrouteservice.org
-            </a>
-            .
+            {apiOffline ? (
+              <>
+                Backend indisponível (<code className="rounded bg-amber-100 px-1">/api/health</code>
+                ). Verifique o deploy na Vercel e as variáveis de ambiente.
+              </>
+            ) : (
+              <>
+                Backend sem <strong>ORS_API_KEY</strong>. Na Vercel, adicione em{' '}
+                <strong>Settings → Environment Variables</strong>. Localmente, use{' '}
+                <code className="rounded bg-amber-100 px-1">apps/api/.env</code> — grátis em{' '}
+                <a
+                  className="underline"
+                  href="https://openrouteservice.org/dev/#/signup"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  openrouteservice.org
+                </a>
+                .
+              </>
+            )}
           </span>
         </div>
       )}
