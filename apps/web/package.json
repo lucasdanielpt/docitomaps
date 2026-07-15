@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "postbuild": "node ./scripts/vercel-sync-dist.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --emitDeclarationOnly false",
     "test": "vitest run --passWithNoTests",

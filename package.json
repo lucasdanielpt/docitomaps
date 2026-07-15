@@ -10,7 +10,7 @@
     "dev:api": "pnpm --filter @docitomapas/api run dev",
     "build": "pnpm --filter @docitomapas/web build",
     "build:vercel": "pnpm --filter @docitomapas/web build",
-    "vercel-build": "pnpm --filter @docitomapas/web build",
+    "vercel-build": "pnpm --filter @docitomapas/web build && rm -rf dist && cp -r apps/web/dist dist",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
