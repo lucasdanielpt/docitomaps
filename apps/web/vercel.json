@@ -3,7 +3,6 @@
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "framework": "vite",
   "rewrites": [
     {
       "source": "/((?!api/|cesiumStatic/).*)",
