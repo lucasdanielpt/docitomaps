@@ -31,6 +31,16 @@ export interface RouteState {
 
   setRouteResult: (result: { route: OptimizedRoute; optimizedOrder: string[] }) => void;
   clearRouteResult: () => void;
+  loadSnapshot: (snapshot: {
+    origin: Waypoint | null;
+    destination: Waypoint | null;
+    stops: Waypoint[];
+    mode: TravelMode;
+    preferences: RoutePreferences;
+    optimize: boolean;
+    route: OptimizedRoute | null;
+    optimizedOrder: string[] | null;
+  }) => void;
 
   reset: () => void;
 }
@@ -111,8 +121,29 @@ export const useRouteStore = create<RouteState>((set) => ({
     })),
   setOptimize: (v) => set({ optimize: v }),
 
-  setRouteResult: ({ route, optimizedOrder }) => set({ route, optimizedOrder }),
+  setRouteResult: ({ route, optimizedOrder }) =>
+    set((state) => {
+      if (optimizedOrder.length === 0) {
+        return { route, optimizedOrder };
+      }
+      const reordered = optimizedOrder
+        .map((id) => state.stops.find((s) => s.id === id))
+        .filter((s): s is Waypoint => Boolean(s));
+      return { route, optimizedOrder, stops: reordered };
+    }),
   clearRouteResult: () => set({ route: null, optimizedOrder: null }),
+
+  loadSnapshot: (snapshot) =>
+    set({
+      origin: snapshot.origin,
+      destination: snapshot.destination,
+      stops: snapshot.stops,
+      mode: snapshot.mode,
+      preferences: snapshot.preferences,
+      optimize: snapshot.optimize,
+      route: snapshot.route,
+      optimizedOrder: snapshot.optimizedOrder,
+    }),
 
   reset: () =>
     set({

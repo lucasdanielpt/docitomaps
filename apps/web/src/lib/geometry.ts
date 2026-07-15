@@ -151,3 +151,38 @@ export function secondsToProgress(seconds: number, totalSeconds: number): number
   if (totalSeconds <= 0) return 0;
   return Math.max(0, Math.min(1, seconds / totalSeconds));
 }
+
+/**
+ * Retorna um ponto a `distanceMeters` metros do ponto original, na direção
+ * `bearingDeg` (0 = norte, 90 = leste). Fórmula geodésica clássica.
+ * Útil para posicionar a câmera atrás/à frente do personagem em modo 3ª pessoa.
+ */
+export function offsetByBearing(
+  lng: number,
+  lat: number,
+  bearingDeg: number,
+  distanceMeters: number,
+): { lng: number; lat: number } {
+  const R = 6_371_000;
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const δ = distanceMeters / R;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lng * Math.PI) / 180;
+  const sinφ2 = Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(bearing);
+  const φ2 = Math.asin(sinφ2);
+  const λ2 =
+    λ1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(δ) * Math.cos(φ1),
+      Math.cos(δ) - Math.sin(φ1) * sinφ2,
+    );
+  return { lng: (λ2 * 180) / Math.PI, lat: (φ2 * 180) / Math.PI };
+}
+
+/**
+ * Metros por pixel no MapLibre Web Mercator para um dado zoom/latitude.
+ * Útil para escalar objetos 3D em "pixels na tela" independente do zoom.
+ */
+export function metersPerPixel(zoom: number, latDeg: number): number {
+  return (156_543.03392 * Math.cos((latDeg * Math.PI) / 180)) / Math.pow(2, zoom);
+}

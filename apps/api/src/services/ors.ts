@@ -78,7 +78,17 @@ export interface OrsGeocodeOptions {
   lang?: string;
 }
 
-export async function orsGeocode(opts: OrsGeocodeOptions): Promise<GeocodeResult[]> {
+function looksLikeLandmarkQuery(query: string): boolean {
+  const q = query.trim();
+  if (q.length < 2) return false;
+  // Consultas curtas sem número de rua tendem a ser marcos/POIs.
+  return !/\d/.test(q) && q.split(/\s+/).length <= 6;
+}
+
+async function peliasSearch(
+  opts: OrsGeocodeOptions,
+  layers?: string,
+): Promise<GeocodeResult[]> {
   const params = new URLSearchParams();
   params.set('text', opts.query);
   params.set('size', String(opts.limit ?? 5));
@@ -86,6 +96,7 @@ export async function orsGeocode(opts: OrsGeocodeOptions): Promise<GeocodeResult
     params.set('focus.point.lat', String(opts.focus.lat));
     params.set('focus.point.lon', String(opts.focus.lng));
   }
+  if (layers) params.set('layers', layers);
   params.set('lang', opts.lang ?? 'pt');
 
   const res = await orsFetch(`/geocode/search?${params.toString()}`, { method: 'GET' });
@@ -103,6 +114,32 @@ export async function orsGeocode(opts: OrsGeocodeOptions): Promise<GeocodeResult
         : undefined,
     };
   });
+}
+
+function dedupeGeocodeResults(results: GeocodeResult[], limit: number): GeocodeResult[] {
+  const seen = new Set<string>();
+  const out: GeocodeResult[] = [];
+  for (const r of results) {
+    const key = `${r.location.lat.toFixed(5)}:${r.location.lng.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export async function orsGeocode(opts: OrsGeocodeOptions): Promise<GeocodeResult[]> {
+  const limit = opts.limit ?? 6;
+  const general = await peliasSearch(opts);
+  if (!looksLikeLandmarkQuery(opts.query)) {
+    return dedupeGeocodeResults(general, limit);
+  }
+  const venue = await peliasSearch(
+    { ...opts, limit: Math.max(limit, 8) },
+    'venue,street,locality,region',
+  );
+  return dedupeGeocodeResults([...venue, ...general], limit);
 }
 
 // ---------------------------------------------------------------------------

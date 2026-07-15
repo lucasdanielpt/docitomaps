@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flag, Loader2, MapPin, RotateCcw, Sparkles, Wand2 } from 'lucide-react';
+import { Flag, Loader2, MapPin, RotateCcw, Sparkles } from 'lucide-react';
 import type { TravelMode } from '@docitomapas/shared';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,7 @@ import {
 import { useRouteStore } from '@/stores/routeStore';
 import { AddressInput } from './AddressInput';
 import { StopsList } from './StopsList';
+import { RouteLegsList } from './RouteLegsList';
 import { fetchRoute, optimizeRoute } from '@/services/api';
 import { formatDistanceMeters, formatDurationSeconds, uid } from '@/lib/utils';
 
@@ -31,13 +32,11 @@ export function PlannerPanel() {
     destination,
     stops,
     mode,
-    preferences,
-    optimize,
     route,
+    optimize,
     setOrigin,
     setDestination,
     setMode,
-    setPreference,
     setOptimize,
     setRouteResult,
     reset,
@@ -46,19 +45,31 @@ export function PlannerPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canCalculate = origin !== null && destination !== null;
+  const canCalculate =
+    origin !== null && (destination !== null || stops.length > 0);
 
   async function handleCalculate() {
-    if (!origin || !destination) return;
+    if (!origin) return;
+    if (!destination && stops.length === 0) return;
     setLoading(true);
     setError(null);
     try {
-      if (optimize && stops.length > 0) {
-        const res = await optimizeRoute({ origin, destination, stops, mode, preferences });
+      if (stops.length > 0 && optimize) {
+        const res = await optimizeRoute({
+          origin,
+          ...(destination ? { destination } : {}),
+          stops,
+          mode,
+        });
         setRouteResult({ route: res.route, optimizedOrder: res.optimizedOrder });
       } else {
-        const waypoints = [origin.location, ...stops.map((s) => s.location), destination.location];
-        const r = await fetchRoute(waypoints, mode, preferences);
+        const orderedStops = stops;
+        const waypoints = [
+          origin.location,
+          ...orderedStops.map((s) => s.location),
+          ...(destination ? [destination.location] : []),
+        ];
+        const r = await fetchRoute(waypoints, mode);
         setRouteResult({
           route: {
             totalDistanceMeters: r.totalDistanceMeters,
@@ -66,7 +77,7 @@ export function PlannerPanel() {
             legs: r.legs,
             fullGeometry: r.fullGeometry,
           },
-          optimizedOrder: stops.map((s) => s.id),
+          optimizedOrder: orderedStops.map((s) => s.id),
         });
       }
     } catch (err) {
@@ -78,7 +89,7 @@ export function PlannerPanel() {
 
   return (
     <section
-      className="flex h-full w-full flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/80 shadow-candy backdrop-blur"
+      className="flex h-full w-full flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-candy"
       aria-labelledby="planner-title"
     >
       <header className="flex items-baseline justify-between border-b border-border/40 px-6 py-5">
@@ -94,9 +105,9 @@ export function PlannerPanel() {
         </button>
       </header>
 
-      <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+      <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
         <div className="space-y-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Partida
           </span>
           <AddressInput
@@ -110,8 +121,8 @@ export function PlannerPanel() {
         <StopsList />
 
         <div className="space-y-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Destino final
+          <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+            Destino final <span className="font-normal normal-case">(opcional)</span>
           </span>
           <AddressInput
             value={destination}
@@ -123,7 +134,7 @@ export function PlannerPanel() {
           />
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-background/60 p-4 shadow-soft">
+        <div className="rounded-2xl border border-border bg-muted/50 p-4 shadow-soft">
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -144,46 +155,16 @@ export function PlannerPanel() {
               </Select>
             </div>
 
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <Label htmlFor="optimize" className="cursor-pointer text-sm font-semibold">
-                  Organizar as paradas para mim
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  A gente escolhe a ordem que economiza mais tempo.
-                </p>
-              </div>
-              <Switch id="optimize" checked={optimize} onCheckedChange={setOptimize} />
-            </div>
+            <p className="rounded-xl bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Ordem automática:</span> informe
+              apenas os lugares por onde quer passar — calculamos a sequência que{' '}
+              <strong>menor tempo total</strong> de viagem.
+            </p>
 
-            <details className="text-sm">
-              <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-primary">
-                Preferências avançadas
-              </summary>
-              <div className="mt-3 space-y-2 rounded-xl bg-secondary/40 p-3">
-                <label className="flex items-center justify-between text-sm">
-                  <span>Evitar pedágios</span>
-                  <Switch
-                    checked={Boolean(preferences.avoidTolls)}
-                    onCheckedChange={(v) => setPreference('avoidTolls', v)}
-                  />
-                </label>
-                <label className="flex items-center justify-between text-sm">
-                  <span>Evitar rodovias</span>
-                  <Switch
-                    checked={Boolean(preferences.avoidHighways)}
-                    onCheckedChange={(v) => setPreference('avoidHighways', v)}
-                  />
-                </label>
-                <label className="flex items-center justify-between text-sm">
-                  <span>Evitar balsas</span>
-                  <Switch
-                    checked={Boolean(preferences.avoidFerries)}
-                    onCheckedChange={(v) => setPreference('avoidFerries', v)}
-                  />
-                </label>
-              </div>
-            </details>
+            <label className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2.5 text-sm">
+              <span>Otimizar ordem das paradas</span>
+              <Switch checked={optimize} onCheckedChange={setOptimize} />
+            </label>
           </div>
         </div>
 
@@ -217,6 +198,8 @@ export function PlannerPanel() {
             </div>
           </div>
         )}
+
+        {route && <RouteLegsList route={route} />}
       </div>
 
       <div className="border-t border-border/40 p-6">
@@ -240,13 +223,9 @@ export function PlannerPanel() {
         </Button>
         {!canCalculate && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            Preencha partida e destino para começar.
+            Preencha a partida e ao menos uma parada ou destino.
           </p>
         )}
-        {/* Referência ao ícone antigo mantida para não quebrar tree-shaking */}
-        <span className="hidden">
-          <Wand2 />
-        </span>
       </div>
     </section>
   );

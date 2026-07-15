@@ -51,6 +51,27 @@ Depois disso: entre no modo cinema (clique em "Assistir viagem em 3D") — a pr�
 
 Abra o DevTools (F12) → aba _Network_ → filtre por `character.glb` — deve aparecer com status 200 e algum tamanho (~1-5 MB). Se aparecer 404, o arquivo ainda não está no lugar certo.
 
+## Problemas comuns
+
+### O boneco aparece em T-pose e não anima
+
+O arquivo foi baixado **sem skinning** (opção errada no Mixamo). Sintomas ao inspecionar o `.glb`:
+
+- `skins: 0`
+- meshes sem `JOINTS_0` / `WEIGHTS_0`
+
+**Solução:** baixe novamente com **Skin: With Skin** e substitua o arquivo.
+
+### O boneco não aparece de jeito nenhum
+
+1. Confirme que entrou no **modo cinema** ("Assistir viagem em 3D").
+2. No console, procure `[DocitoMapas][character] 1º render` — se não aparecer, a rota ainda não foi posicionada.
+3. Se aparecer um **ponto rosa 2D** mas nada 3D, recarregue a página (Ctrl+R) após colocar o `.glb`.
+
+### Erro no console: `Expected value to be of type number, but found null instead`
+
+Esse aviso vem do **estilo de mapa OpenFreeMap** (tiles vetoriais com propriedades nulas) — não impede o boneco de renderizar. Se incomodar, ignore ou use o fallback raster (a app troca automaticamente se o estilo falhar).
+
 ## Licença
 
 Modelos do Mixamo são gratuitos para uso comercial e pessoal (termos da Adobe). Documente a origem nos créditos do produto:

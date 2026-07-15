@@ -5,6 +5,8 @@ import {
   haversineMeters,
   initialBearingDeg,
   interpolatePosition,
+  metersPerPixel,
+  offsetByBearing,
   progressToSeconds,
   secondsToProgress,
 } from './geometry';
@@ -87,6 +89,38 @@ describe('interpolatePosition', () => {
 
   it('retorna null para geometria vazia', () => {
     expect(interpolatePosition({ type: 'LineString', coordinates: [] }, 0.5)).toBeNull();
+  });
+});
+
+describe('offsetByBearing', () => {
+  it('1000m ao norte aumenta latitude ~0.009°', () => {
+    const p = offsetByBearing(0, 0, 0, 1000);
+    expect(p.lat).toBeCloseTo(0.00898, 4);
+    expect(p.lng).toBeCloseTo(0, 4);
+  });
+  it('1000m ao leste aumenta longitude ~0.009° na equador', () => {
+    const p = offsetByBearing(0, 0, 90, 1000);
+    expect(p.lng).toBeCloseTo(0.00898, 4);
+    expect(p.lat).toBeCloseTo(0, 4);
+  });
+  it('offset é reversível (bearing + 180)', () => {
+    const a = offsetByBearing(-46.63, -23.55, 45, 500);
+    const back = offsetByBearing(a.lng, a.lat, 225, 500);
+    expect(back.lng).toBeCloseTo(-46.63, 3);
+    expect(back.lat).toBeCloseTo(-23.55, 3);
+  });
+});
+
+describe('metersPerPixel', () => {
+  it('cai pela metade ao aumentar zoom em 1', () => {
+    const z10 = metersPerPixel(10, 0);
+    const z11 = metersPerPixel(11, 0);
+    expect(z11 / z10).toBeCloseTo(0.5, 3);
+  });
+  it('é menor em latitudes altas (compress by cos)', () => {
+    const eq = metersPerPixel(12, 0);
+    const nordic = metersPerPixel(12, 60);
+    expect(nordic).toBeCloseTo(eq * 0.5, 1);
   });
 });
 

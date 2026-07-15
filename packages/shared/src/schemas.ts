@@ -44,7 +44,7 @@ export const RouteRequestSchema = z.object({
 
 export const OptimizeRequestSchema = z.object({
   origin: WaypointSchema,
-  destination: WaypointSchema,
+  destination: WaypointSchema.optional(),
   stops: z.array(WaypointSchema).max(25, 'máximo 25 paradas na v1'),
   mode: TravelModeSchema,
   preferences: RoutePreferencesSchema.optional(),

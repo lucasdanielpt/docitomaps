@@ -2,7 +2,6 @@ import maplibregl, {
   MercatorCoordinate,
   type CustomLayerInterface,
   type CustomRenderMethod,
-  type LngLatLike,
   type Map as MapLibreMap,
 } from 'maplibre-gl';
 import * as THREE from 'three';
@@ -10,31 +9,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /**
- * Caminho relativo do arquivo `.glb` do personagem principal.
- * Se o arquivo existir em `apps/web/public/models/character.glb` ele é
- * carregado; caso contrário, cai no personagem procedural.
- *
- * Como obter (Mixamo):
- *   1. Ir em https://www.mixamo.com (login gratuito com conta Adobe).
- *   2. Escolher um personagem (Ch14, Y-Bot, X-Bot etc.) → botão "Download":
- *        Format: FBX / With Skin (para ter o mesh).
- *   3. Clicar em "Animations" no topo, escolher "Walking":
- *        marcar "In Place" → Download com Format FBX.
- *      Baixar também "Running" e "Idle" se quiser trocar animação por
- *      velocidade (opcional — para MVP só precisamos de "Walking").
- *   4. Converter FBX → glTF/GLB:
- *      Opção fácil: subir o(s) FBX em https://products.aspose.app/3d/conversion/fbx-to-glb
- *      Ou via CLI:  npx -y fbx2gltf character.fbx --binary
- *   5. Colocar o arquivo final em `apps/web/public/models/character.glb`.
- *      A app detecta automaticamente e substitui o boneco procedural.
- *
- * Se a animação "walk" estiver com nome diferente, a heurística
- * `pickAnimationClip()` procura por 'walk' > 'run' > primeira disponível.
- */
-/**
  * URLs candidatas do modelo, testadas em ordem. A primeira que responder 200
- * será carregada. Aceita tanto o nome padronizado (`character.glb`) quanto o
- * nome que sai por padrão do Mixamo (`Walking.glb` / `walking.glb`).
+ * com Content-Type gltf/binary será carregada.
  */
 export const CHARACTER_MODEL_URLS = [
   '/models/character.glb',
@@ -42,12 +18,33 @@ export const CHARACTER_MODEL_URLS = [
   '/models/walking.glb',
 ];
 
-/**
- * Escala aproximada esperada para modelos Mixamo (que exportam em cm).
- * Multiplicamos por este fator para o modelo ter ~1.7m no mundo Three.js.
- * Se o `.glb` já vier em metros, ajuste isso para 1.
- */
 const MIXAMO_UNIT_SCALE = 0.01;
+
+/** Mixamo exporta em centímetros → escala para ~1.7m no espaço Three.js. */
+
+/** Altura assumida do modelo em metros (Mixamo médio ≈ 1.7m). */
+const CHARACTER_HEIGHT_METERS = 1.7;
+
+/**
+ * Rotação de correção para "levantar" o modelo Y-up (glTF/Three.js padrão)
+ * para ficar em pé no plano do MapLibre (Z-up localmente).
+ */
+const AXIS_CORRECTION_X = Math.PI / 2;
+
+/** Altitude acima do chão (m) — evita z-fighting com o plano do mapa. */
+const CHARACTER_ALTITUDE_M = 0.8;
+
+/** Escala inteligente: Mixamo cm (>10) ou GLB já em metros (~1,8 m). */
+function computeModelScale(preHeight: number): number {
+  if (preHeight <= 0) return MIXAMO_UNIT_SCALE;
+  if (preHeight >= 0.8 && preHeight <= 3.5) {
+    return CHARACTER_HEIGHT_METERS / preHeight;
+  }
+  if (preHeight > 10) return MIXAMO_UNIT_SCALE;
+  return CHARACTER_HEIGHT_METERS / preHeight;
+}
+
+export type CharacterMotion = 'idle' | 'walk' | 'run';
 
 export class CharacterLayer implements CustomLayerInterface {
   public readonly id = 'docito-character';
@@ -58,22 +55,35 @@ export class CharacterLayer implements CustomLayerInterface {
   private renderer: THREE.WebGLRenderer | null = null;
   private scene: THREE.Scene | null = null;
   private camera: THREE.Camera | null = null;
-  /** Root controlado pelo layer (posição/orientação global). */
-  private root: THREE.Group | null = null;
-  /** Filho de `root` que contém o modelo em si — usado para trocar em runtime. */
-  private modelHolder: THREE.Group | null = null;
+  /** Grupo do personagem (procedural ou GLB). Escondido em 1ª pessoa. */
+  private modelGroup: THREE.Group | null = null;
+  private debugBeacon: THREE.Object3D | null = null;
   private mixer: THREE.AnimationMixer | null = null;
+  private walkAction: THREE.AnimationAction | null = null;
+  private runAction: THREE.AnimationAction | null = null;
   private clock = new THREE.Clock();
 
-  private currentLngLat: LngLatLike = [0, 0];
+  private currentLng = 0;
+  private currentLat = 0;
   private currentHeadingDeg = 0;
   private currentSpeedNormalized = 0;
+  private currentMotion: CharacterMotion = 'walk';
 
-  /**
-   * Indica que o modelo glTF assumiu o lugar do procedural.
-   * Enquanto for `false`, o layer usa o boneco cápsula candy.
-   */
   public isUsingGltf = false;
+
+  /** true após o primeiro frame renderizado (fallback marcador 2D). */
+  get hasRenderedOnce(): boolean {
+    return this.didLogFirstRender;
+  }
+
+  private readonly debug: boolean;
+  private modelVisible = true;
+  private hasPosition = false;
+  private didLogFirstRender = false;
+
+  constructor(options: { debug?: boolean } = {}) {
+    this.debug = options.debug ?? false;
+  }
 
   onAdd = (map: MapLibreMap, gl: WebGL2RenderingContext | WebGLRenderingContext): void => {
     this.map = map;
@@ -81,25 +91,46 @@ export class CharacterLayer implements CustomLayerInterface {
     this.camera = new THREE.Camera();
     this.scene = new THREE.Scene();
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.65);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xffd6df, 1.5);
+    this.scene.add(hemi);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffe5f0, 1.1);
-    sun.position.set(-70, -100, 200).normalize();
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(0, -70, 100).normalize();
     this.scene.add(sun);
+    const sun2 = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun2.position.set(0, 70, 100).normalize();
+    this.scene.add(sun2);
 
-    this.root = new THREE.Group();
-    this.scene.add(this.root);
+    this.modelGroup = new THREE.Group();
+    this.scene.add(this.modelGroup);
 
-    this.modelHolder = new THREE.Group();
-    this.root.add(this.modelHolder);
+    if (this.debug) {
+      const anchorMat = new THREE.MeshBasicMaterial({
+        color: 0xff2a68,
+        side: THREE.DoubleSide,
+      });
+      const anchor = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), anchorMat);
+      anchor.name = 'docito:anchor';
+      anchor.position.set(1.2, 0, 0.5);
+      this.scene.add(anchor);
 
-    // Começa com o procedural (aparece instantaneamente).
+      const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2a68 });
+      const beacon = new THREE.Mesh(
+        new THREE.OctahedronGeometry(CHARACTER_HEIGHT_METERS * 0.7),
+        beaconMat,
+      );
+      beacon.position.y = CHARACTER_HEIGHT_METERS * 2.2;
+      this.debugBeacon = beacon;
+      this.modelGroup.add(beacon);
+    }
+
     const procedural = buildProceduralCharacter();
-    this.modelHolder.add(procedural.object);
+    this.modelGroup.add(procedural.object);
     this.mixer = procedural.mixer;
+    this.walkAction = procedural.walkAction;
+    this.runAction = procedural.runAction;
 
-    // Tenta trocar por .glb em segundo plano; se falhar (404, erro), fica com
-    // o procedural silenciosamente.
     void this.tryLoadFirstAvailable(CHARACTER_MODEL_URLS);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -115,61 +146,110 @@ export class CharacterLayer implements CustomLayerInterface {
     this.renderer = null;
     this.scene = null;
     this.camera = null;
-    this.root = null;
-    this.modelHolder = null;
+    this.modelGroup = null;
+    this.debugBeacon = null;
     this.mixer = null;
     this.map = null;
   };
 
-  update(lng: number, lat: number, headingDeg: number, speedNormalized: number): void {
-    this.currentLngLat = [lng, lat];
+  update(
+    lng: number,
+    lat: number,
+    headingDeg: number,
+    speedNormalized: number,
+    motion: CharacterMotion = 'walk',
+  ): void {
+    this.currentLng = lng;
+    this.currentLat = lat;
     this.currentHeadingDeg = headingDeg;
     this.currentSpeedNormalized = Math.max(0, Math.min(1, speedNormalized));
+    if (motion !== this.currentMotion) {
+      this.currentMotion = motion;
+      this.applyMotion(motion);
+    }
+    this.hasPosition = true;
     this.map?.triggerRepaint();
   }
 
-  render: CustomRenderMethod = (_gl, matrix) => {
-    if (!this.renderer || !this.scene || !this.camera || !this.root) return;
+  setModelVisible(visible: boolean): void {
+    this.modelVisible = visible;
+    if (this.modelGroup) this.modelGroup.visible = visible;
+  }
 
-    const merc = MercatorCoordinate.fromLngLat(this.currentLngLat, 0);
-    const scale = merc.meterInMercatorCoordinateUnits();
-
-    this.root.position.set(merc.x, merc.y, merc.z);
-
-    const zoom = this.map?.getZoom() ?? 12;
-    const zoomBoost = Math.max(1, 20 - zoom);
-    this.root.scale.set(scale * zoomBoost, scale * zoomBoost, scale * zoomBoost);
-
-    const headingRad = THREE.MathUtils.degToRad(-this.currentHeadingDeg + 90);
-    const q = new THREE.Quaternion();
-    q.setFromEuler(new THREE.Euler(Math.PI / 2, headingRad, 0, 'ZYX'));
-    this.root.quaternion.copy(q);
+  /**
+   * Render segue o padrão oficial MapLibre + Three.js:
+   * https://maplibre.org/maplibre-gl-js/docs/examples/add-a-3d-model-using-threejs/
+   *
+   * A matriz do mapa (m) é multiplicada pela transformação local do modelo (l):
+   * translate(merc) × scale(s, -s, s) × rotateX × rotateY × rotateZ
+   */
+  render: CustomRenderMethod = (gl, matrix) => {
+    if (!this.renderer || !this.scene || !this.camera || !this.map) return;
+    if (!this.hasPosition) return;
 
     const dt = this.clock.getDelta();
-    if (this.mixer) {
-      const timeScale = 0.6 + this.currentSpeedNormalized * 2.4;
-      this.mixer.timeScale = timeScale;
+    if (this.mixer && this.currentMotion !== 'idle') {
+      const base =
+        this.currentMotion === 'run'
+          ? 1.4 + this.currentSpeedNormalized * 2.2
+          : 0.6 + this.currentSpeedNormalized * 1.8;
+      this.mixer.timeScale = base;
       this.mixer.update(dt);
     }
 
-    const projMatrix = new THREE.Matrix4().fromArray(Array.from(matrix as ArrayLike<number>));
-    this.camera.projectionMatrix = projMatrix;
+    const merc = MercatorCoordinate.fromLngLat(
+      [this.currentLng, this.currentLat],
+      CHARACTER_ALTITUDE_M,
+    );
+    const meterScale = merc.meterInMercatorCoordinateUnits();
+    const headingRad = THREE.MathUtils.degToRad(-this.currentHeadingDeg);
+
+    const rotationX = new THREE.Matrix4().makeRotationAxis(
+      new THREE.Vector3(1, 0, 0),
+      AXIS_CORRECTION_X,
+    );
+    const rotationY = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 1, 0), 0);
+    const rotationZ = new THREE.Matrix4().makeRotationAxis(
+      new THREE.Vector3(0, 0, 1),
+      headingRad,
+    );
+
+    const m = new THREE.Matrix4().fromArray(Array.from(matrix as ArrayLike<number>));
+    const l = new THREE.Matrix4()
+      .makeTranslation(merc.x, merc.y, merc.z)
+      .scale(new THREE.Vector3(meterScale, -meterScale, meterScale))
+      .multiply(rotationX)
+      .multiply(rotationY)
+      .multiply(rotationZ);
+
+    this.camera.projectionMatrix = m.multiply(l);
 
     this.renderer.resetState();
-    this.renderer.render(this.scene, this.camera);
-  };
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-  // -------------------------------------------------------------------------
-  // Carregamento assíncrono do .glb (Mixamo)
-  // -------------------------------------------------------------------------
+    this.renderer.render(this.scene, this.camera);
+
+    if (!this.didLogFirstRender) {
+      this.didLogFirstRender = true;
+      // eslint-disable-next-line no-console
+      console.info('[DocitoMapas][character] 1º render (matriz oficial MapLibre)', {
+        lng: this.currentLng,
+        lat: this.currentLat,
+        meterScale,
+        headingDeg: this.currentHeadingDeg,
+        usingGltf: this.isUsingGltf,
+      });
+    }
+
+    this.map.triggerRepaint();
+  };
 
   private async tryLoadFirstAvailable(urls: string[]): Promise<void> {
     for (const url of urls) {
       try {
-        // HEAD antes para evitar poluir o console com 404 em dev.
-        // Cuidado: em dev, o Vite retorna 200 + text/html (index.html) como
-        // fallback SPA para caminhos inexistentes. Precisamos checar o
-        // Content-Type explicitamente para não gerar falsos positivos.
         const head = await fetch(url, { method: 'HEAD' });
         if (!head.ok) continue;
         const contentType = head.headers.get('content-type') ?? '';
@@ -178,7 +258,6 @@ export class CharacterLayer implements CustomLayerInterface {
           !contentType.includes('octet-stream') &&
           !contentType.includes('binary')
         ) {
-          // Ex.: text/html => fallback SPA; ignorar.
           continue;
         }
       } catch {
@@ -203,44 +282,155 @@ export class CharacterLayer implements CustomLayerInterface {
   }
 
   private installGltf(gltf: GLTF): void {
-    if (!this.modelHolder) return;
-
-    // Remove o procedural
-    while (this.modelHolder.children.length > 0) {
-      const child = this.modelHolder.children[0];
-      if (!child) break;
-      this.modelHolder.remove(child);
-      disposeObject(child);
-    }
+    if (!this.modelGroup) return;
 
     const model = gltf.scene;
+
+    let hasSkinnedMesh = false;
+    let meshCount = 0;
     model.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        (obj as THREE.Mesh).castShadow = false;
-        (obj as THREE.Mesh).receiveShadow = false;
+      if (obj instanceof THREE.SkinnedMesh) hasSkinnedMesh = true;
+      if ((obj as THREE.Mesh).isMesh) meshCount++;
+    });
+
+    // GLB sem skinning (Mixamo "Without Skin") substitui o procedural por mesh
+    // estática/invisível — manter boneco candy até o usuário corrigir o arquivo.
+    if (!hasSkinnedMesh) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[DocitoMapas][character] GLB ignorado: sem skinning (baixe Mixamo com "With Skin"). Mantendo boneco procedural.',
+        { meshCount, animations: gltf.animations.length },
+      );
+      return;
+    }
+
+    const toRemove: THREE.Object3D[] = [];
+    for (const child of this.modelGroup.children) {
+      if (child === this.debugBeacon) continue;
+      toRemove.push(child);
+    }
+    for (const c of toRemove) {
+      this.modelGroup.remove(c);
+      disposeObject(c);
+    }
+
+    const preBox = new THREE.Box3().setFromObject(model);
+    const preSize = new THREE.Vector3();
+    preBox.getSize(preSize);
+
+    const materialsSummary: Array<{ name: string; type: string; opacity: number }> = [];
+
+    model.traverse((obj) => {
+      obj.frustumCulled = false;
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+
+      const applyMatDefensive = (mat: THREE.Material | undefined): THREE.Material => {
+        if (!mat) return new THREE.MeshStandardMaterial({ color: 0xff5a8a });
+        const mm = mat.clone();
+        mm.side = THREE.DoubleSide;
+        if ('emissive' in mm) {
+          (mm as THREE.MeshStandardMaterial).emissive = new THREE.Color(0x2a0f18);
+          (mm as THREE.MeshStandardMaterial).emissiveIntensity = 0.25;
+        }
+        return mm;
+      };
+
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map(applyMatDefensive);
+        for (const mat of mesh.material) materialsSummary.push(matSummary(mat));
+      } else {
+        mesh.material = applyMatDefensive(mesh.material);
+        materialsSummary.push(matSummary(mesh.material));
       }
     });
 
-    // Modelos Mixamo vêm em cm → escalamos para metros (aprox).
-    model.scale.setScalar(MIXAMO_UNIT_SCALE);
-    // Alguns modelos vêm com o pivô no topo; posicionamos no chão.
-    model.position.set(0, 0, 0);
-    this.modelHolder.add(model);
+    model.scale.setScalar(computeModelScale(preSize.y));
+    // Apoia os pés no chão local (Y-up antes da rotação global).
+    const box = new THREE.Box3().setFromObject(model);
+    model.position.set(0, -box.min.y, 0);
+    this.modelGroup.add(model);
 
-    // Reset mixer para o novo modelo
+    const postBox = new THREE.Box3().setFromObject(model);
+    const postSize = new THREE.Vector3();
+    postBox.getSize(postSize);
+
+    // eslint-disable-next-line no-console
+    console.info('[DocitoMapas][character] GLB instalado', {
+      preSize: preSize.toArray().map((v) => v.toFixed(2)),
+      postSize: postSize.toArray().map((v) => v.toFixed(3)),
+      animations: gltf.animations.map((a) => ({ name: a.name, tracks: a.tracks.length })),
+      materials: materialsSummary,
+      hasSkinning: (() => {
+        let found = false;
+        model.traverse((o) => {
+          if (o instanceof THREE.SkinnedMesh) found = true;
+        });
+        return found;
+      })(),
+    });
+
     this.mixer?.stopAllAction();
     this.mixer = new THREE.AnimationMixer(model);
+    this.walkAction = null;
+    this.runAction = null;
 
-    const walkClip = pickAnimationClip(gltf.animations, ['walk', 'walking', 'run', 'running']);
+    const walkClip = pickAnimationClip(gltf.animations, ['walk', 'walking']);
+    const runClip =
+      pickAnimationClip(gltf.animations, ['run', 'running']) ??
+      pickAnimationClip(gltf.animations, ['walk', 'walking']);
+
     if (walkClip) {
-      const action = this.mixer.clipAction(walkClip);
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      action.play();
+      this.walkAction = this.mixer.clipAction(walkClip);
+      this.walkAction.setLoop(THREE.LoopRepeat, Infinity);
+    }
+    if (runClip && runClip !== walkClip) {
+      this.runAction = this.mixer.clipAction(runClip);
+      this.runAction.setLoop(THREE.LoopRepeat, Infinity);
+    } else {
+      this.runAction = this.walkAction;
     }
 
+    this.applyMotion(this.currentMotion);
+
     this.isUsingGltf = true;
+    this.setModelVisible(this.modelVisible);
     this.map?.triggerRepaint();
   }
+
+  private applyMotion(motion: CharacterMotion): void {
+    if (!this.mixer) return;
+
+    const walk = this.walkAction;
+    const run = this.runAction ?? walk;
+
+    if (motion === 'idle') {
+      walk?.stop();
+      run?.stop();
+      return;
+    }
+
+    if (motion === 'run' && run) {
+      walk?.fadeOut(0.15);
+      run.reset().fadeIn(0.15).play();
+      return;
+    }
+
+    if (walk) {
+      run?.fadeOut(0.15);
+      walk.reset().fadeIn(0.15).play();
+    }
+  }
+}
+
+function matSummary(m: THREE.Material): { name: string; type: string; opacity: number } {
+  return {
+    name: m.name || '(sem nome)',
+    type: m.type,
+    opacity: (m as THREE.Material & { opacity?: number }).opacity ?? 1,
+  };
 }
 
 function pickAnimationClip(
@@ -270,17 +460,27 @@ function disposeObject(obj: THREE.Object3D): void {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Personagem procedural (avatar candy) — fallback padrão
-// ---------------------------------------------------------------------------
-
-function buildProceduralCharacter(): { object: THREE.Group; mixer: THREE.AnimationMixer } {
+function buildProceduralCharacter(): {
+  object: THREE.Group;
+  mixer: THREE.AnimationMixer;
+  walkAction: THREE.AnimationAction;
+  runAction: THREE.AnimationAction;
+} {
   const g = new THREE.Group();
 
-  const skin = new THREE.MeshStandardMaterial({ color: 0xffd6df, roughness: 0.55 });
-  const shirt = new THREE.MeshStandardMaterial({ color: 0xff5a8a, roughness: 0.55 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x7a3040, roughness: 0.6 });
-  const shoe = new THREE.MeshStandardMaterial({ color: 0x2a1220, roughness: 0.7 });
+  // Materiais com emissive leve — visíveis mesmo com iluminação do mapa atrás.
+  const mk = (color: number) =>
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.55,
+      emissive: new THREE.Color(color),
+      emissiveIntensity: 0.15,
+    });
+
+  const skin = mk(0xffd6df);
+  const shirt = mk(0xff5a8a);
+  const pants = mk(0x7a3040);
+  const shoe = mk(0x2a1220);
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.5, 6, 10), shirt);
   torso.position.y = 1.05;
@@ -328,13 +528,20 @@ function buildProceduralCharacter(): { object: THREE.Group; mixer: THREE.Animati
   shoeR.position.set(0.15, 0.05, 0.05);
   g.add(shoeL, shoeR);
 
-  const walkClip = createWalkClip(armPivotL, armPivotR, legPivotL, legPivotR);
-  const mixer = new THREE.AnimationMixer(g);
-  const action = mixer.clipAction(walkClip);
-  action.setLoop(THREE.LoopRepeat, Infinity);
-  action.play();
+  const walkClip = createWalkClip(armPivotL, armPivotR, legPivotL, legPivotR, 1);
+  const runClip = createWalkClip(armPivotL, armPivotR, legPivotL, legPivotR, 0.55);
+  runClip.name = 'run';
 
-  return { object: g, mixer };
+  const mixer = new THREE.AnimationMixer(g);
+  const walkAction = mixer.clipAction(walkClip);
+  walkAction.setLoop(THREE.LoopRepeat, Infinity);
+  walkAction.play();
+
+  const runAction = mixer.clipAction(runClip);
+  runAction.setLoop(THREE.LoopRepeat, Infinity);
+
+  // Guardar referências no grupo para applyMotion procedural via mixer clips.
+  return { object: g, mixer, walkAction, runAction };
 }
 
 function createWalkClip(
@@ -342,22 +549,24 @@ function createWalkClip(
   armR: THREE.Object3D,
   legL: THREE.Object3D,
   legR: THREE.Object3D,
+  durationSec: number,
 ): THREE.AnimationClip {
-  const times = [0, 0.25, 0.5, 0.75, 1];
-  const swing = 0.9;
+  const times = [0, 0.25, 0.5, 0.75, 1].map((t) => t * durationSec);
+  const swing = durationSec < 1 ? 1.15 : 0.9;
 
   const trackFor = (obj: THREE.Object3D, phase: number) => {
     obj.name = obj.name || obj.uuid;
     const values: number[] = [];
     for (const t of times) {
-      const angle = Math.sin((t + phase) * Math.PI * 2) * swing * 0.5;
+      const normalizedT = t / durationSec;
+      const angle = Math.sin((normalizedT + phase) * Math.PI * 2) * swing * 0.5;
       const half = angle / 2;
       values.push(Math.sin(half), 0, 0, Math.cos(half));
     }
     return new THREE.QuaternionKeyframeTrack(`${obj.name}.quaternion`, times, values);
   };
 
-  return new THREE.AnimationClip('walk', 1, [
+  return new THREE.AnimationClip(durationSec < 1 ? 'run' : 'walk', durationSec, [
     trackFor(armL, 0.5),
     trackFor(armR, 0),
     trackFor(legL, 0),

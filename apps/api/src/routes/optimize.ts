@@ -9,52 +9,42 @@ import {
 import { MemoryCache } from '../lib/cache.js';
 import { OrsError, orsDirections, orsOptimize } from '../services/ors.js';
 import { hasOrsKey } from '../config.js';
-import { haversineMeters, heldKarpFixedEndpoints } from '../lib/optimizer.js';
+import {
+  haversineMeters,
+  heldKarpFixedEndpoints,
+  heldKarpOpenStart,
+} from '../lib/optimizer.js';
 
 const cache = new MemoryCache<OptimizeResponse>();
 
-/**
- * Otimizador local (offline) usando Held-Karp com haversine.
- * Não considera trânsito real, mas resolve o caso trivial e o modo demo.
- */
-function optimizeLocal(
-  origin: Waypoint,
-  destination: Waypoint,
+function optimizeLocalSegment(
+  start: Waypoint,
+  end: Waypoint | null,
   stops: Waypoint[],
 ): string[] {
-  const fixed = stops
-    .map((s, i) => ({ s, i }))
-    .filter((x) => x.s.fixedOrder === true);
-  const free = stops
-    .map((s, i) => ({ s, i }))
-    .filter((x) => x.s.fixedOrder !== true);
-
-  const freeCoords = free.map((f) => f.s.location);
-  const orderedFreeIndices =
-    freeCoords.length === 0
-      ? []
-      : heldKarpFixedEndpoints(
-          freeCoords,
-          origin.location,
-          destination.location,
-          haversineMeters,
-        );
-  const orderedFreeIds = orderedFreeIndices.map((idx) => {
-    const entry = free[idx];
-    if (!entry) throw new Error('índice de parada livre inválido');
-    return entry.s.id;
+  if (stops.length === 0) return [];
+  const orderedFreeIndices = end
+    ? heldKarpFixedEndpoints(
+        stops.map((s) => s.location),
+        start.location,
+        end.location,
+        haversineMeters,
+      )
+    : heldKarpOpenStart(stops.map((s) => s.location), start.location, haversineMeters);
+  return orderedFreeIndices.map((idx) => {
+    const wp = stops[idx];
+    if (!wp) throw new Error('índice de parada inválido');
+    return wp.id;
   });
-
-  const fixedIds = fixed.map((f) => f.s.id);
-  return [...fixedIds, ...orderedFreeIds];
 }
 
-async function optimizeViaOrs(
-  origin: Waypoint,
-  destination: Waypoint,
+async function optimizeOrsSegment(
+  start: Waypoint,
+  end: Waypoint,
   stops: Waypoint[],
   mode: TravelMode,
 ): Promise<string[]> {
+  if (stops.length === 0) return [];
   const jobs = stops.map((s, i) => ({
     id: i + 1,
     location: [s.location.lng, s.location.lat] as [number, number],
@@ -62,13 +52,13 @@ async function optimizeViaOrs(
   const vehicle = {
     id: 1,
     profile: mode,
-    start: [origin.location.lng, origin.location.lat] as [number, number],
-    end: [destination.location.lng, destination.location.lat] as [number, number],
+    start: [start.location.lng, start.location.lat] as [number, number],
+    end: [end.location.lng, end.location.lat] as [number, number],
   };
   const result = await orsOptimize(vehicle, jobs);
   const route = result.routes[0];
   if (!route) return stops.map((s) => s.id);
-  const ordered = route.steps
+  return route.steps
     .filter((step) => step.type === 'job' && step.job !== undefined)
     .map((step) => {
       const idx = (step.job as number) - 1;
@@ -76,6 +66,47 @@ async function optimizeViaOrs(
       if (!wp) throw new Error('índice de step inválido');
       return wp.id;
     });
+}
+
+/**
+ * Otimiza paradas livres entre âncoras fixas (origem → paradas fixas → destino opcional).
+ */
+async function optimizeWithFixedAnchors(
+  origin: Waypoint,
+  destination: Waypoint | undefined,
+  stops: Waypoint[],
+  mode: TravelMode,
+): Promise<string[]> {
+  if (stops.length === 0) return [];
+
+  const ordered: string[] = [];
+  let anchor: Waypoint = origin;
+  let freeBatch: Waypoint[] = [];
+
+  const flushBatch = async (endAnchor: Waypoint | null) => {
+    if (freeBatch.length === 0) return;
+    let batchIds: string[];
+    if (hasOrsKey) {
+      const orsEnd = endAnchor ?? origin;
+      batchIds = await optimizeOrsSegment(anchor, orsEnd, freeBatch, mode);
+    } else {
+      batchIds = optimizeLocalSegment(anchor, endAnchor, freeBatch);
+    }
+    ordered.push(...batchIds);
+    freeBatch = [];
+  };
+
+  for (const stop of stops) {
+    if (stop.fixedOrder) {
+      await flushBatch(stop);
+      ordered.push(stop.id);
+      anchor = stop;
+    } else {
+      freeBatch.push(stop);
+    }
+  }
+
+  await flushBatch(destination ?? null);
   return ordered;
 }
 
@@ -92,14 +123,12 @@ export const optimizeRoutes: FastifyPluginAsync = async (fastify) => {
     const { origin, destination, stops, mode, preferences } = parsed.data;
 
     try {
-      let optimizedOrder: string[];
-      if (stops.length === 0) {
-        optimizedOrder = [];
-      } else if (hasOrsKey && stops.length >= 4) {
-        optimizedOrder = await optimizeViaOrs(origin, destination, stops, mode);
-      } else {
-        optimizedOrder = optimizeLocal(origin, destination, stops);
-      }
+      const optimizedOrder = await optimizeWithFixedAnchors(
+        origin,
+        destination,
+        stops,
+        mode,
+      );
 
       const orderedStops = optimizedOrder
         .map((id) => stops.find((s) => s.id === id))
@@ -108,12 +137,15 @@ export const optimizeRoutes: FastifyPluginAsync = async (fastify) => {
       const coords: Array<[number, number]> = [
         [origin.location.lng, origin.location.lat],
         ...orderedStops.map((s) => [s.location.lng, s.location.lat] as [number, number]),
-        [destination.location.lng, destination.location.lat],
       ];
+      if (destination) {
+        coords.push([destination.location.lng, destination.location.lat]);
+      }
 
       const dir = await orsDirections({ coordinates: coords, mode, preferences });
 
-      const ids = [origin.id, ...orderedStops.map((s) => s.id), destination.id];
+      const ids = [origin.id, ...orderedStops.map((s) => s.id)];
+      if (destination) ids.push(destination.id);
       const legs = dir.legs.map((leg, i) => ({
         ...leg,
         fromId: ids[i] ?? leg.fromId,

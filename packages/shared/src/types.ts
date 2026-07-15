@@ -93,7 +93,7 @@ export interface RouteResponse {
 
 export interface OptimizeRequestBody {
   origin: Waypoint;
-  destination: Waypoint;
+  destination?: Waypoint;
   stops: Waypoint[];
   mode: TravelMode;
   preferences?: RoutePreferences;
