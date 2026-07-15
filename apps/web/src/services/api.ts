@@ -45,6 +45,8 @@ export function optimizeRoute(req: OptimizeRequest): Promise<OptimizeResponse> {
 
 export async function fetchHealth(): Promise<{ ok: boolean; orsKeyConfigured: boolean }> {
   const res = await fetch('/api/health');
-  if (!res.ok) throw new Error('health check falhou');
+  if (!res.ok) {
+    throw new Error(`health-${res.status}`);
+  }
   return (await res.json()) as { ok: boolean; orsKeyConfigured: boolean };
 }

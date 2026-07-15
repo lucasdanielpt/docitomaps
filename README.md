@@ -33,6 +33,51 @@ pnpm dev
 - Frontend: http://localhost:5173
 - Backend:  http://localhost:8787
 
+## Deploy na Vercel
+
+O frontend e a API rodam **no mesmo projeto** Vercel (pasta `api/` = serverless functions).
+
+### Opção A — raiz do monorepo (recomendado)
+
+| Campo | Valor |
+|--------|--------|
+| **Root Directory** | *(vazio — raiz do repositório)* |
+| **Framework Preset** | Other |
+| **Install Command** | `pnpm install` |
+| **Build Command** | `pnpm vercel-build` |
+| **Output Directory** | `dist` |
+
+### Opção B — subpasta `apps/web`
+
+| Campo | Valor |
+|--------|--------|
+| **Root Directory** | `apps/web` |
+| **Install Command** | `cd ../.. && pnpm install` |
+| **Build Command** | `pnpm build` |
+| **Output Directory** | `dist` |
+
+> Não use apenas `vite build` — o build precisa gerar `api/handler.cjs` (roteamento Fastify).
+
+### Variáveis de ambiente (Production + Preview)
+
+| Nome | Onde roda | Obrigatória para rotas |
+|------|-----------|-------------------------|
+| `ORS_API_KEY` | API serverless | Sim (geocode/rota/otimização) |
+| `VITE_GOOGLE_MAPS_API_KEY` | Frontend (build) | Só modo Foto 3D |
+
+Após alterar `VITE_*`, faça **Redeploy**. `ORS_API_KEY` vale na hora para as functions.
+
+### Teste rápido
+
+Abra `https://SEU-DOMINIO.vercel.app/api/health` — deve retornar JSON:
+
+```json
+{ "ok": true, "orsKeyConfigured": true, "version": "1.0.0" }
+```
+
+Se der **404**, a pasta `api/` não entrou no deploy (Root Directory ou Build Command incorretos).
+Se `orsKeyConfigured` for `false`, falta `ORS_API_KEY` na Vercel.
+
 ## Scripts principais
 
 | Script | Descrição |

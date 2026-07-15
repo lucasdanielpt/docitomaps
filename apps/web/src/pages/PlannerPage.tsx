@@ -17,6 +17,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 export function PlannerPage() {
   const [orsWarning, setOrsWarning] = useState(false);
   const [apiOffline, setApiOffline] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
   const { sharedName } = useSharedRouteFromUrl();
   const route = useRouteStore((s) => s.route);
   const cinema = usePlayerStore((s) => s.cinema);
@@ -26,11 +27,13 @@ export function PlannerPage() {
     fetchHealth()
       .then((h) => {
         setApiOffline(false);
+        setHealthStatus(null);
         setOrsWarning(!h.orsKeyConfigured);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         setApiOffline(true);
         setOrsWarning(true);
+        setHealthStatus(err instanceof Error ? err.message : 'erro');
       });
   }, []);
 
@@ -67,7 +70,8 @@ export function PlannerPage() {
             {apiOffline ? (
               <>
                 Backend indisponível (<code className="rounded bg-amber-100 px-1">/api/health</code>
-                ). Verifique o deploy na Vercel e as variáveis de ambiente.
+                {healthStatus ? ` — ${healthStatus}` : ''}). Confira o deploy na Vercel (Root Directory e
+                Build Command) e a variável <strong>ORS_API_KEY</strong>.
               </>
             ) : (
               <>
