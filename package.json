@@ -11,6 +11,7 @@
     "build": "pnpm --filter @docitomapas/web build",
     "build:vercel": "pnpm --filter @docitomapas/web build",
     "vercel-build": "pnpm --filter @docitomapas/web build && rm -rf dist && cp -r apps/web/dist dist",
+    "bundle:api": "pnpm --filter @docitomapas/web run bundle:api",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
@@ -24,5 +25,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

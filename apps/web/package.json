@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node ./scripts/bundle-vercel-api.mjs && tsc -b && vite build",
+    "build": "tsc -b && vite build",
+    "bundle:api": "node ./scripts/bundle-vercel-api.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --emitDeclarationOnly false",
     "test": "vitest run --passWithNoTests",
