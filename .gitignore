@@ -43,6 +43,10 @@ test-results/
 .vite/
 .eslintcache
 
+# Vercel API bundle (gerado no build)
+api/handler.cjs
+apps/web/api/handler.cjs
+
 # Assets 3D grandes — comitar apenas em CDN
 apps/web/public/models/*.glb
 apps/web/public/models/*.fbx
