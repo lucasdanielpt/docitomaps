@@ -43,6 +43,12 @@ test-results/
 .vite/
 .eslintcache
 
+# Bundle Fastify antigo (não usado no deploy Vercel)
+api/handler.cjs
+api/handler.mjs
+apps/web/api/handler.cjs
+apps/web/api/handler.mjs
+
 # Assets 3D grandes — comitar apenas em CDN
 apps/web/public/models/*.glb
 apps/web/public/models/*.fbx

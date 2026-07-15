@@ -1,5 +1,4 @@
 module.exports = async function handler(req, res) {
-  req.url = '/api/geocode';
-  const { handleVercelRequest } = require('./handler.cjs');
-  return handleVercelRequest(req, res);
+  const { handleGeocode } = require('./_lib/backend.cjs');
+  return handleGeocode(req, res);
 };

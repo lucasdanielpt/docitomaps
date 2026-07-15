@@ -22,28 +22,9 @@
     }
   ],
   "functions": {
-    "api/health.ts": {
-      "maxDuration": 10
-    },
-    "api/geocode.js": {
-      "maxDuration": 30,
-      "memory": 1024,
-      "includeFiles": "api/handler.cjs"
-    },
-    "api/route.js": {
-      "maxDuration": 30,
-      "memory": 1024,
-      "includeFiles": "api/handler.cjs"
-    },
-    "api/optimize.js": {
-      "maxDuration": 30,
-      "memory": 1024,
-      "includeFiles": "api/handler.cjs"
-    },
-    "api/[...path].js": {
-      "maxDuration": 30,
-      "memory": 1024,
-      "includeFiles": "api/handler.cjs"
-    }
+    "api/health.ts": { "maxDuration": 10 },
+    "api/geocode.js": { "maxDuration": 30, "includeFiles": "api/_lib/**" },
+    "api/route.js": { "maxDuration": 30, "includeFiles": "api/_lib/**" },
+    "api/optimize.js": { "maxDuration": 30, "includeFiles": "api/_lib/**" }
   }
 }
